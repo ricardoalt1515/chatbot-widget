@@ -739,8 +739,8 @@
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
 
-      // Solo mostrar el mensaje de bienvenida
-      if (messagesContainer, children.length === 0) {
+      // Mostar mensaje de bienvenida si el chat esta vacio
+      if (messagesContainer.querySelector('.hydrous-message')) {
         startConversation(messagesContainer, config, state);
       }
 
@@ -872,6 +872,9 @@
       // No conectamos con el backend hasta que el usuario envie su primer mensaje
       state.conversationStarted = false;
       state.conversationId = null;
+
+      //Hacer scroll al mensaje
+      scrollToBottom(messagesContainer);
 
 
       // Intentar recuperar de cache primero
