@@ -862,6 +862,17 @@
   // Iniciar conversación
   async function startConversation(messagesContainer, config, state) {
     try {
+      // Limpiar contenedor de mensajes (por si hay mensajes de error)
+      messagesContainer.innerHTML = '';
+
+      // Mostrar mensaje de bienvenida directamente desde el frontend
+      const welcomeMessage = config.welcomeMessage || "Bienvenido a HydrousAI. En que puedo ayudarte?";
+      addBotMessage(messagesContainer, welcomeMessage, state);
+
+      // No conectamos con el backend hasta que el usuario envie su primer mensaje
+      state.conversationStarted = false;
+
+
       // Intentar recuperar de cache primero
       const cachedConversation = getFromCache('last_conversation');
       if (cachedConversation && cachedConversation.id) {
@@ -988,13 +999,54 @@
       // Mostrar indicador de escritura
       showTypingIndicator(messagesContainer);
 
-      // Si no hay ID de conversación, iniciar una
-      if (!state.conversationId) {
-        await startConversation(messagesContainer, config, state);
+      // Si es el primer mensaje, iniciar la conversación en el backend
+      if (!state.isConversationStarted) {
+        try {
+          // Iniciar conversación en el backend
+          const response = await fetch(`${config.apiUrl}/chat/start`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          state.conversationId = data.id;
+          state.isConversationStarted = true;
+
+          // Guardar en localStorage
+          localStorage.setItem('hydrous_conversation_id', data.id);
+
+        } catch (err) {
+          console.error('Error al iniciar conversación en backend:', err);
+          clearTypingIndicator(messagesContainer);
+          addBotMessage(messagesContainer, "Lo siento, no puedo conectar con el asistente. Por favor, intenta de nuevo más tarde.", state);
+          state.isTyping = false;
+          return;
+        }
       }
 
-      // Si hay archivo, usar FormData para enviar el mensaje y el archivo
+      // Si no hay ID de conversación, intentar iniciar una (solo como respaldo)
+      if (!state.conversationId) {
+        try {
+          // En lugar de llamar a startConversation, que muestra un mensaje predefinido,
+          // podemos simplemente generar un error para que se maneje abajo
+          throw new Error("No se pudo obtener ID de conversación");
+        } catch (err) {
+          clearTypingIndicator(messagesContainer);
+          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
+          state.isTyping = false;
+          return;
+        }
+      }
+
+      // Una vez que tenemos ID de conversación, procesamos el mensaje
       if (state.selectedFile) {
+        // Con archivo
         const formData = new FormData();
         formData.append('conversation_id', state.conversationId);
         formData.append('message', message || '');
@@ -1022,7 +1074,7 @@
         // Actualizar cache
         updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
       } else {
-        // Envío normal de mensaje sin archivo
+        // Sin archivo
         const response = await fetch(`${config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: {
