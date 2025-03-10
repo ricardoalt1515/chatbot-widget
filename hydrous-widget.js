@@ -5,7 +5,7 @@
 
   // Configuración por defecto
   const DEFAULT_CONFIG = {
-    apiUrl: 'http://localhost:8000/api',  // Esta URL se cambiará a tu backend desplegado
+    apiUrl: 'https://a7ac-2806-2f0-2181-f6fc-616a-dde9-9ec3-ceb4.ngrok-free.app/api',  // Esta URL se cambiará a tu backend desplegado
     primaryColor: '#0891b2',
     secondaryColor: '#e0f2fe',
     position: 'right',
