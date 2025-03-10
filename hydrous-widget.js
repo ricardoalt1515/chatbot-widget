@@ -871,6 +871,7 @@
 
       // No conectamos con el backend hasta que el usuario envie su primer mensaje
       state.conversationStarted = false;
+      state.conversationId = null;
 
 
       // Intentar recuperar de cache primero
