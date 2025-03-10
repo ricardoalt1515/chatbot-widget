@@ -357,25 +357,29 @@
         align-items: flex-end;
         gap: 10px;
         position: relative;
+        border-radius: 30px;
+        background-color: #f8fafc;
+        padding: 2px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+        overflow: hidden; /* iMPORTARNTE PARA EVITAR DESBORDAMIENTO */
       }
       
       .hydrous-textarea-container {
         flex: 1;
         position: relative;
-        border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         transition: box-shadow 0.2s ease;
       }
       
       .hydrous-textarea {
         width: 100%;
-        padding: 14px 16px;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        padding: 12px 16px;
+        border: none;
+        background: transparent;
         font-size: 15px;
         resize: none;
-        min-height: 50px;
+        min-height: 24px;
         max-height: 120px;
         outline: none;
         line-height: 1.5;
