@@ -739,8 +739,8 @@
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
 
-      // Si no hay conversación iniciada, iniciarla
-      if (!state.conversationId) {
+      // Solo mostrar el mensaje de bienvenida
+      if (messagesContainer, children.length === 0) {
         startConversation(messagesContainer, config, state);
       }
 
