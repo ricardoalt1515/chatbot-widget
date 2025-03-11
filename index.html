@@ -3,60 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hydrous Chatbot Widget Demo</title>
+    <title>Demo Chatbot Hydrous</title>
     <style>
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-        }
-        h1 {
-            color: #0891b2;
-        }
-        .code-block {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            overflow-x: auto;
-            border: 1px solid #e2e8f0;
-        }
-        pre {
-            margin: 0;
-        }
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+        .container { max-width: 800px; margin: 40px auto; padding: 20px; text-align: center; }
+        h1 { color: #0891b2; }
     </style>
 </head>
 <body>
-    <h1>Hydrous Chatbot Widget</h1>
-    <p>Este es el widget de chatbot para soluciones de reciclaje de agua. A continuación se muestra un ejemplo de cómo integrarlo en tu sitio web:</p>
-    
-    <div class="code-block">
-        <pre><code>&lt;!-- Hydrous AI Chatbot Widget --&gt;
-&lt;script src="https://[tu-usuario].github.io/hydrous-chatbot-widget/hydrous-widget.min.js"&gt;&lt;/script&gt;
-&lt;script&gt;
-  document.addEventListener('DOMContentLoaded', function() {
-    HydrousWidget.init({
-      primaryColor: '#0891b2',  // Personalizable
-      title: 'Asistente Técnico',
-      subtitle: 'Consultas sobre reciclaje de agua'
-    });
-  });
-&lt;/script&gt;</code></pre>
+    <div class="container">
+        <h1>Hydrous AI - Asistente de Reciclaje de Agua</h1>
+        <p>Haz clic en el icono de chat para comenzar una conversación.</p>
     </div>
-
-    <h2>Demo en vivo</h2>
-    <p>Puedes ver el widget funcionando en esta página. Haz clic en el botón flotante en la esquina inferior derecha para probar el chatbot.</p>
-
-    <!-- Hydrous AI Chatbot Widget -->
-    <script src="./hydrous-widget.min.js"></script>
+    
+    <script src="hydrous-widget.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Versión no minificada para poder editar directamente
             HydrousWidget.init({
-                apiUrl: 'https://backend-chatbot-ibyma2.onrender.com/api',  // Cambia esto a la URL de tu backend
+                apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',
                 primaryColor: '#0891b2',
                 title: 'Asistente Técnico',
-                subtitle: 'Consultas sobre reciclaje de agua'
+                subtitle: 'Soluciones de Reciclaje de Agua',
+                // Desactivar analytics para evitar errores
+                enableAnalytics: false
             });
         });
     </script>

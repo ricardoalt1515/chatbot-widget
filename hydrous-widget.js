@@ -5,7 +5,7 @@
 
   // Configuración por defecto
   const DEFAULT_CONFIG = {
-    apiUrl: 'https://backend-chatbot-ibyma2.onrender.com/api',  // Esta URL se cambiará a tu backend desplegado
+    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',  // Esta URL se cambiará a tu backend desplegado
     primaryColor: '#0891b2',
     secondaryColor: '#e0f2fe',
     position: 'right',
