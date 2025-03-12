@@ -773,9 +773,35 @@
 
     // Eventos de textarea
     textarea.addEventListener('input', () => {
+
+      // Guardar posicion del cursor
+      const cursorPosition = textarea.selectionStart;
+
       // Auto-expandir altura
       textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+
+      // Establecer nueva altura basada en contenido
+      const newHeight = Math.min(textarea.scrollHeight, 120);
+      textarea.style.height = newHeight + 'px';
+
+      // Asegurarse que el scroll este en la posicion correcta
+      if (textarea.scrollHeight > 120) {
+        // Calcular en que linea esta el cursor
+        const textBeforeCursor = textarea.value.substring(0, cursorPosition);
+        const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 24;
+        const linesBeforeCursor = textBeforeCursor.split('\n').length;
+
+        // Ajustar el scroll para mantener visible el cursor
+        const approximateCursorPosition = (linesBeforeCursor - 1) * lineHeight;
+        const visibleAreaStart = textarea.scrollTop;
+        const visibleAreaEnd = visibleAreaStart + 120;
+
+        if (approximateCursorPosition < visibleAreaStart) {
+          textarea.scrollTop = approximateCursorPosition;
+        } else if (approximateCursorPosition > visibleAreaEnd - lineHeight) {
+          textarea.scrollTop = approximateCursorPosition - 120 + lineHeight;
+        }
+      }
 
       // Activar/desactivar botón de envío
       if (textarea.value.trim() && !state.isTyping) {
@@ -784,6 +810,28 @@
       } else {
         sendButton.classList.remove('active');
         sendButton.disabled = true;
+      }
+    });
+
+    // mejorar experiencai de usuario
+    textarea.addEventListener('focus', () => {
+      // Al recibir foco, asegurarnos que hay espacio para escribir
+      textarea.style.height = 'auto';
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 48), 120);
+      textarea.style.height = newHeight + 'px';
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      // si es la tecla Enter y no Shift+Enter
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      } else {
+        // En otras teclas, asegurarnos que el textarea se ajusta correctamente
+        setTimeout(() => {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea / scrollHeight, 120) + 'px';
+        }, 0);
       }
     });
 
