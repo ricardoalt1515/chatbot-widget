@@ -363,6 +363,7 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         border: 1px solid #e2e8f0;
         overflow: hidden; /* iMPORTARNTE PARA EVITAR DESBORDAMIENTO */
+        min-height: 48px;
       }
       
       .hydrous-textarea-container {
@@ -370,6 +371,7 @@
         position: relative;
         overflow: hidden;
         transition: box-shadow 0.2s ease;
+        min-height: 24px;
       }
       
       .hydrous-textarea {
@@ -385,6 +387,11 @@
         line-height: 1.5;
         transition: border-color 0.2s ease;
         font-family: inherit;
+        overflow-y: auto;             /*permite el scroll vertical */
+        box-sizing: border-box;
+        display: block;
+        white-space: pre-warp;
+        word-wrap: break-word;
       }
       
       .hydrous-textarea:focus {
