@@ -57,6 +57,9 @@
     container.id = 'hydrous-chatbot-container';
     document.body.appendChild(container);
 
+    // Cargar librería para Markdown si no existe
+    loadMarkdownLibrary();
+
     // Cargar estilos
     loadStyles(config);
 
@@ -79,6 +82,34 @@
       document.getElementById('hydrous-loading-indicator').remove();
     }
   };
+
+  // Cargar librería de Markdown
+  function loadMarkdownLibrary() {
+    if (window.marked) return; // Ya está cargada
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js';
+    script.async = true;
+
+    // Configurar marked para seguridad cuando esté cargado
+    script.onload = function () {
+      if (window.marked) {
+        window.marked.setOptions({
+          breaks: true, // Permite saltos de línea con un solo retorno
+          gfm: true,    // GitHub Flavored Markdown
+          sanitize: false, // No usar la sanitización interna (obsoleta)
+          // Usaremos DOMPurify para sanitización más segura
+        });
+      }
+    };
+    document.head.appendChild(script);
+
+    // También cargar DOMPurify para sanitización
+    const purifyScript = document.createElement('script');
+    purifyScript.src = 'https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js';
+    purifyScript.async = true;
+    document.head.appendChild(purifyScript);
+  }
 
   // Función para trackear eventos
   function trackEvent(eventName, config, properties = {}) {
@@ -164,8 +195,8 @@
       }
       
       .hydrous-chat-window {
-        width: 380px;
-        height: 600px;
+        width: 480px;
+        height: 750px;
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -252,7 +283,7 @@
       .hydrous-message {
         display: flex;
         flex-direction: column;
-        max-width: 85%;
+        max-width: 90%;
         animation: hydrous-fadeIn 0.3s ease;
       }
       
@@ -283,6 +314,72 @@
         color: #1e293b;
         border-radius: 4px 16px 16px 16px;
         border: 1px solid ${config.secondaryColor};
+      }
+      
+      /* Estilos específicos para elementos Markdown */
+      .hydrous-message-bot .hydrous-message-bubble code {
+        background-color: rgba(0,0,0,0.05);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble pre {
+        background-color: rgba(0,0,0,0.05);
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+        overflow-x: auto;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble pre code {
+        background-color: transparent;
+        padding: 0;
+        border-radius: 0;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #1e293b;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble ul, 
+      .hydrous-message-bot .hydrous-message-bubble ol {
+        margin-top: 8px;
+        margin-bottom: 8px;
+        padding-left: 24px;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble a {
+        color: ${config.primaryColor};
+        text-decoration: none;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble a:hover {
+        text-decoration: underline;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble blockquote {
+        border-left: 4px solid ${config.primaryColor}40;
+        margin: 8px 0;
+        padding-left: 12px;
+        color: #475569;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble table {
+        border-collapse: collapse;
+        margin: 10px 0;
+        width: 100%;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble table th,
+      .hydrous-message-bot .hydrous-message-bubble table td {
+        border: 1px solid #e2e8f0;
+        padding: 6px 10px;
+        text-align: left;
+      }
+      
+      .hydrous-message-bot .hydrous-message-bubble table th {
+        background-color: ${config.secondaryColor}80;
       }
       
       .hydrous-message-time {
@@ -390,7 +487,7 @@
         overflow-y: auto;             /*permite el scroll vertical */
         box-sizing: border-box;
         display: block;
-        white-space: pre-warp;
+        white-space: pre-wrap;
         word-wrap: break-word;
       }
       
@@ -593,7 +690,7 @@
         }
       }
       
-      @media (max-width: 480px) {
+      @media (max-width: 768px) {
         .hydrous-chat-window {
           width: 100vw;
           height: 100vh;
@@ -604,6 +701,14 @@
           right: 0;
           bottom: 0;
           z-index: 10000;
+        }
+        
+        .hydrous-messages-container {
+          padding: 16px;
+        }
+        
+        .hydrous-message {
+          max-width: 95%;
         }
       }
     `;
@@ -747,7 +852,7 @@
       chatWindow.style.display = 'flex';
 
       // Mostar mensaje de bienvenida si el chat esta vacio
-      if (messagesContainer.querySelector('.hydrous-message')) {
+      if (!messagesContainer.querySelector('.hydrous-message')) {
         startConversation(messagesContainer, config, state);
       }
 
@@ -778,9 +883,8 @@
       }
     });
 
-    // Eventos de textarea
+    // Eventos de textarea - Mejorado para manejar texto largo
     textarea.addEventListener('input', () => {
-
       // Guardar posicion del cursor
       const cursorPosition = textarea.selectionStart;
 
@@ -820,7 +924,7 @@
       }
     });
 
-    // mejorar experiencai de usuario
+    // Mejorar experiencia de usuario en el textarea
     textarea.addEventListener('focus', () => {
       // Al recibir foco, asegurarnos que hay espacio para escribir
       textarea.style.height = 'auto';
@@ -828,16 +932,22 @@
       textarea.style.height = newHeight + 'px';
     });
 
+    // Manejo de teclas en textarea - corregido
     textarea.addEventListener('keydown', (e) => {
-      // si es la tecla Enter y no Shift+Enter
+      // Si es la tecla Enter y no Shift+Enter
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
-      } else {
-        // En otras teclas, asegurarnos que el textarea se ajusta correctamente
+        if (!sendButton.disabled) {
+          sendMessage();
+        }
+      } else if (e.key === 'Enter' && e.shiftKey) {
+        // Permitir el comportamiento por defecto para Shift+Enter (nueva línea)
         setTimeout(() => {
           textarea.style.height = 'auto';
-          textarea.style.height = Math.min(textarea / scrollHeight, 120) + 'px';
+          textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+
+          // Mantener visibles las líneas más recientes
+          textarea.scrollTop = textarea.scrollHeight;
         }, 0);
       }
     });
@@ -886,7 +996,7 @@
 
       // Limpiar y resetear textarea
       textarea.value = '';
-      textarea.style.height = 'auto';
+      textarea.style.height = '48px'; // Altura base fija
       sendButton.classList.remove('active');
       sendButton.disabled = true;
 
@@ -904,14 +1014,6 @@
 
     // Enviar con botón
     sendButton.addEventListener('click', sendMessage);
-
-    // Enviar con Enter (no Shift+Enter)
-    textarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
   }
 
   // Iniciar conversación
@@ -921,7 +1023,7 @@
       messagesContainer.innerHTML = '';
 
       // Mostrar mensaje de bienvenida directamente desde el frontend
-      const welcomeMessage = config.welcomeMessage || "Bienvenido a HydrousAI. En que puedo ayudarte?";
+      const welcomeMessage = config.welcomeMessage || "Bienvenido a HydrousAI. ¿En qué puedo ayudarte?";
       addBotMessage(messagesContainer, welcomeMessage, state);
 
       // No conectamos con el backend hasta que el usuario envie su primer mensaje
@@ -1154,7 +1256,7 @@
         // Limpiar indicador de escritura
         clearTypingIndicator(messagesContainer);
 
-        // Añadir respuesta del bot
+        // Añadir respuesta del bot (con soporte Markdown)
         addBotMessage(messagesContainer, data.message, state);
 
         // Actualizar cache
@@ -1248,7 +1350,7 @@
     scrollToBottom(messagesContainer);
   }
 
-  // Añadir mensaje del bot a la interfaz
+  // Añadir mensaje del bot a la interfaz (con soporte Markdown)
   function addBotMessage(messagesContainer, message, state, animate = true) {
     // Eliminar estado vacío si existe
     const emptyState = messagesContainer.querySelector('.hydrous-empty-state');
@@ -1270,9 +1372,25 @@
       hour12: true
     });
 
+    // Convertir Markdown a HTML si está disponible
+    let formattedMessage = '';
+
+    try {
+      if (window.marked && window.DOMPurify) {
+        // Usar marked para convertir Markdown a HTML
+        formattedMessage = window.DOMPurify.sanitize(window.marked.parse(message));
+      } else {
+        // Fallback: Formateo básico de líneas nuevas y escape HTML
+        formattedMessage = escapeHtml(message);
+      }
+    } catch (e) {
+      console.error('Error al procesar Markdown:', e);
+      formattedMessage = escapeHtml(message);
+    }
+
     // Contenido del mensaje
     messageEl.innerHTML = `
-      <div class="hydrous-message-bubble">${escapeHtml(message)}</div>
+      <div class="hydrous-message-bubble">${formattedMessage}</div>
       <div class="hydrous-message-time">
         <span class="hydrous-bot-indicator"></span>
         ${time}
@@ -1438,4 +1556,3 @@
       .replace(/\n/g, "<br>"); // Convertir saltos de línea a <br>
   }
 })();
-
