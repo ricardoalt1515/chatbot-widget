@@ -195,7 +195,7 @@
       }
       
       .hydrous-chat-window {
-        width: 480px;
+        width: 650px;
         height: 750px;
         border-radius: 16px;
         overflow: hidden;
