@@ -722,10 +722,10 @@
     chatButton.className = 'hydrous-chat-button';
     chatButton.setAttribute('aria-label', 'Abrir chat');
     chatButton.innerHTML = `
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="white" stroke-width="2"></path>
-      </svg>
-    `;
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="white" stroke-width="2"></path>
+    </svg>
+  `;
     container.appendChild(chatButton);
 
     // Ventana de chat (inicialmente oculta)
@@ -740,19 +740,21 @@
     // Crear contenedor de mensajes
     const messagesContainer = document.createElement('div');
     messagesContainer.className = 'hydrous-messages-container';
+
+    // Estado vacío más neutral sin texto de bienvenida específico
     messagesContainer.innerHTML = `
-      <div class="hydrous-empty-state">
-        <div class="hydrous-empty-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-          </svg>
-        </div>
-        <h3 class="hydrous-empty-title">Asistente de Reciclaje de Agua</h3>
-        <p class="hydrous-empty-text">
-          Inicie una consulta sobre nuestras soluciones tecnológicas para el tratamiento y reciclaje de agua.
-        </p>
+    <div class="hydrous-empty-state">
+      <div class="hydrous-empty-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
+        </svg>
       </div>
-    `;
+      <h3 class="hydrous-empty-title">${config.title}</h3>
+      <p class="hydrous-empty-text">
+        Escriba su consulta para comenzar.
+      </p>
+    </div>
+  `;
     chatWindow.appendChild(messagesContainer);
 
     // Crear área de entrada
@@ -1022,17 +1024,12 @@
       // Limpiar contenedor de mensajes (por si hay mensajes de error)
       messagesContainer.innerHTML = '';
 
-      // Mostrar mensaje de bienvenida directamente desde el frontend
-      const welcomeMessage = config.welcomeMessage || "Bienvenido a HydrousAI. ¿En qué puedo ayudarte?";
-      addBotMessage(messagesContainer, welcomeMessage, state);
+      // Ya no mostramos un mensaje de bienvenida desde el frontend
+      // Solo iniciamos la conversación y esperamos respuestas del backend
 
-      // No conectamos con el backend hasta que el usuario envie su primer mensaje
+      // No conectamos con el backend hasta que el usuario envíe su primer mensaje
       state.conversationStarted = false;
       state.conversationId = null;
-
-      //Hacer scroll al mensaje
-      scrollToBottom(messagesContainer);
-
 
       // Intentar recuperar de cache primero
       const cachedConversation = getFromCache('last_conversation');
@@ -1064,87 +1061,57 @@
         }
       }
 
-      // Si no hay conversación en cache o no es válida, crear nueva
+      // Si no hay conversación en cache o no es válida, preparar para nueva conversación
+      // pero no iniciaremos nada hasta que el usuario envíe su primer mensaje
       if (!state.conversationId) {
-        state.isTyping = true;
-
-        // Mostrar indicador de escritura
-        showTypingIndicator(messagesContainer);
-
-        // Llamar API para iniciar conversación
-        const response = await fetch(`${config.apiUrl}/chat/start`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // Guardar ID de conversación
-        state.conversationId = data.id;
-        localStorage.setItem('hydrous_conversation_id', data.id);
-
-        // Limpiar indicador de escritura
-        clearTypingIndicator(messagesContainer);
-
-        // Mostrar mensajes iniciales
-        const visibleMessages = data.messages
-          .filter(msg => msg.role !== 'system')
-          .forEach(msg => {
-            if (msg.role === 'assistant') {
-              addBotMessage(messagesContainer, msg.content, state);
-            }
-          });
-
-        // Guardar en cache
-        saveToCache('last_conversation', {
-          id: state.conversationId,
-          messages: data.messages
-        });
+        // Dejar el contenedor vacío o con un indicador mínimo
+        // No iniciaremos la conversación automáticamente
       }
 
     } catch (err) {
-      console.error('Error al iniciar conversación:', err);
-
-      // Mensaje de error
-      clearTypingIndicator(messagesContainer);
-      addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al iniciar el chat. Por favor, intenta nuevamente.", state);
-
+      console.error('Error al preparar conversación:', err);
+      // En caso de error crítico, mostrar un mensaje de error técnico
+      addBotMessage(messagesContainer, "Error de conexión. Por favor, recarga la página.", state);
     } finally {
       state.isTyping = false;
     }
   }
 
+
   // Reiniciar conversación
   function resetConversation(messagesContainer, config, state) {
-    // Limpiar localStorage
+    // Limpiar localStorage completamente
     localStorage.removeItem('hydrous_conversation_id');
+    localStorage.removeItem('hydrous_last_conversation');
 
     // Limpiar estado
     state.conversationId = null;
     state.messages = [];
+    state.isConversationStarted = false;
 
-    // Limpiar interfaz
+    // Mostrar un indicador neutro de reinicio
+    messagesContainer.innerHTML = '';
+
+    // Restaurar el estado vacío
     messagesContainer.innerHTML = `
-      <div class="hydrous-message hydrous-message-bot">
-        <div class="hydrous-message-bubble">
-          Conversación reiniciada. Iniciando nuevo asistente...
-        </div>
+    <div class="hydrous-empty-state">
+      <div class="hydrous-empty-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
+        </svg>
       </div>
-    `;
+      <h3 class="hydrous-empty-title">${config.title}</h3>
+      <p class="hydrous-empty-text">
+        Conversación reiniciada. Escriba su consulta para comenzar.
+      </p>
+    </div>
+  `;
 
-    // Mostrar indicador de escritura
-    showTypingIndicator(messagesContainer);
+    // NO iniciamos una nueva conversación automáticamente
+    // Esperamos a que el usuario escriba su primer mensaje
 
-    // Iniciar nueva conversación
-    setTimeout(() => {
-      startConversation(messagesContainer, config, state);
-    }, 1000);
+    // Notificar el evento de reinicio
+    trackEvent('conversation_reset', config);
   }
 
   // Enviar mensaje a la API
@@ -1161,7 +1128,7 @@
       showTypingIndicator(messagesContainer);
 
       // Si es el primer mensaje, iniciar la conversación en el backend
-      if (!state.isConversationStarted) {
+      if (!state.isConversationId || !state.isConversationStarted) {
         try {
           // Iniciar conversación en el backend
           const response = await fetch(`${config.apiUrl}/chat/start`, {
