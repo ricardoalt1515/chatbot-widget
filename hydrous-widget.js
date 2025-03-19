@@ -845,7 +845,7 @@
     return header;
   }
 
-  // Configurar eventos de la interfaz - COMPLETAMENTE REESCRITO
+  // Configurar eventos de la interfaz
   function setupEvents(config, state) {
     // Acceso directo a elementos clave
     const {
@@ -867,6 +867,8 @@
       const hasFile = state.selectedFile !== null;
       const canSend = (hasText || hasFile) && !state.isTyping;
 
+      console.log("Estado del botón:", { hasText, hasFile, canSend });
+
       if (canSend) {
         sendButton.classList.add('active');
         sendButton.disabled = false;
@@ -879,42 +881,75 @@
     // Función para enviar mensaje
     function sendMessage() {
       const messageText = textarea.value.trim();
+      const hasFile = state.selectedFile !== null;
 
       // Verificar si hay contenido para enviar
-      if (!(messageText || state.selectedFile) || state.isTyping) {
+      if (!(messageText || hasFile) || state.isTyping) {
+        console.log("No hay contenido para enviar o el bot está escribiendo");
         return;
       }
 
-      // Añadir mensaje del usuario a la interfaz
-      if (messageText) {
-        addUserMessage(messagesContainer, messageText, state);
-      } else if (state.selectedFile) {
-        // Si no hay texto pero hay archivo, añadir un mensaje "vacío"
-        addUserMessage(messagesContainer, "", state);
+      try {
+        // Deshabilitar botón y textarea durante el envío
+        sendButton.disabled = true;
+        textarea.disabled = true;
+
+        // Mostrar indicador visual de carga para archivos
+        if (hasFile) {
+          const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+          if (fileInfo) {
+            fileInfo.textContent = "Enviando archivo...";
+          }
+        }
+
+        // Añadir mensaje del usuario a la interfaz
+        if (messageText) {
+          addUserMessage(messagesContainer, messageText, state);
+        } else if (hasFile) {
+          // Si no hay texto pero hay archivo, añadir un mensaje "vacío"
+          addUserMessage(messagesContainer, "", state);
+        }
+
+        // Si hay archivo adjunto, mostrarlo
+        if (hasFile) {
+          addFileToMessage(messagesContainer, state.selectedFile);
+        }
+
+        // Limpiar textarea
+        textarea.value = '';
+        textarea.style.height = '48px';
+
+        // Crear una copia del archivo antes de enviar y limpiar
+        const fileCopy = hasFile ? state.selectedFile : null;
+
+        // Enviar mensaje y archivo al backend
+        // IMPORTANTE: Pasar la copia del archivo, no la referencia en state
+        sendMessageToAPI(messagesContainer, messageText, config, state, fileCopy);
+
+        // Limpiar archivo adjunto DESPUÉS de enviarlo
+        if (hasFile) {
+          clearFilePreview(inputContainer, state);
+        }
+
+        // Registrar evento
+        trackEvent('message_sent', config, { hasFile });
+
+      } catch (error) {
+        console.error("Error al enviar mensaje:", error);
+
+        // Mostrar mensaje de error al usuario
+        const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+        if (fileInfo) {
+          fileInfo.textContent = "Error al enviar archivo. Intente de nuevo.";
+        }
+      } finally {
+        // Rehabilitar controles
+        textarea.disabled = false;
+        textarea.focus();
+
+        // Actualizar estado del botón
+        updateSendButton();
       }
-
-      // Si hay archivo adjunto, mostrarlo
-      if (state.selectedFile) {
-        addFileToMessage(messagesContainer, state.selectedFile);
-      }
-
-      // Limpiar textarea
-      textarea.value = '';
-      textarea.style.height = '48px';
-
-      // Enviar mensaje y archivo al backend
-      sendMessageToAPI(messagesContainer, messageText, config, state);
-
-      // Limpiar archivo adjunto
-      if (state.selectedFile) {
-        clearFilePreview(inputContainer, state);
-      }
-
-      // Actualizar estado del botón
-      updateSendButton();
-
-      // Registrar evento
-      trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
     }
 
     // Evento del botón flotante (abrir chat)
@@ -1007,7 +1042,12 @@
     }
 
     // Evento del botón de envío
-    sendButton.addEventListener('click', sendMessage);
+    sendButton.addEventListener('click', function () {
+      console.log("Botón de envío clickeado, disabled:", sendButton.disabled);
+      if (!sendButton.disabled) {
+        sendMessage();
+      }
+    });
 
     // Definir la función clearFilePreview en espacio global
     window.HydrousWidget.clearFilePreview = function (container, state) {
@@ -1025,7 +1065,13 @@
         preview.parentNode.removeChild(preview);
       }
 
-      // Actualizar botón después de eliminar archivo
+      // Limpiar cualquier mensaje de estado sobre el archivo
+      const fileInfo = container.querySelector('.hydrous-file-info');
+      if (fileInfo) {
+        fileInfo.textContent = '';
+      }
+
+      // Actualizar el estado del botón de envío
       updateSendButton();
     };
   }
@@ -1140,7 +1186,7 @@
   }
 
   // Enviar mensaje a la API
-  async function sendMessageToAPI(messagesContainer, message, config, state) {
+  async function sendMessageToAPI(messagesContainer, message, config, state, fileToUpload) {
     try {
       // Verificar conexión
       if (!navigator.onLine) {
@@ -1192,26 +1238,34 @@
       }
 
       // Procesar mensaje con o sin archivo
-      if (state.selectedFile) {
+      if (fileToUpload) {
         // Enviar mensaje con archivo
+        console.log("Enviando archivo:", fileToUpload.name);
+
         const formData = new FormData();
         formData.append('conversation_id', state.conversationId);
         formData.append('message', message || '');
-        formData.append('file', state.selectedFile);
+        formData.append('file', fileToUpload);
 
-        const response = await fetch(`${config.apiUrl}/documents/upload`, {
-          method: 'POST',
-          body: formData
-        });
+        try {
+          const response = await fetch(`${config.apiUrl}/documents/upload`, {
+            method: 'POST',
+            body: formData
+          });
 
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          clearTypingIndicator(messagesContainer);
+          addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
+          updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
+        } catch (error) {
+          console.error("Error al subir archivo:", error);
+          clearTypingIndicator(messagesContainer);
+          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al subir el archivo. Por favor, intenta de nuevo más tarde.", state);
         }
-
-        const data = await response.json();
-        clearTypingIndicator(messagesContainer);
-        addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
-        updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
       } else {
         // Enviar solo mensaje
         const response = await fetch(`${config.apiUrl}/chat/message`, {
@@ -1417,9 +1471,12 @@
     // Icono según tipo de archivo
     const iconSvg = getFileIcon(file.type);
 
+    // Formato del tamaño de archivo
+    const fileSize = formatFileSize(file.size);
+
     previewContainer.innerHTML = `
       <div class="hydrous-file-preview-icon">${iconSvg}</div>
-      <div class="hydrous-file-preview-name">${file.name}</div>
+      <div class="hydrous-file-preview-name" title="${file.name}">${file.name} (${fileSize})</div>
       <button class="hydrous-file-preview-remove" title="Eliminar archivo">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1434,6 +1491,12 @@
     previewContainer.querySelector('.hydrous-file-preview-remove').addEventListener('click', () => {
       window.HydrousWidget.clearFilePreview(inputContainer, state);
     });
+
+    // Mostrar mensaje indicando que puede enviarse
+    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+    if (fileInfo) {
+      fileInfo.textContent = "Archivo listo para enviar";
+    }
   }
 
   // Añadir archivo al mensaje
@@ -1449,14 +1512,24 @@
       // Icono según tipo de archivo
       const iconSvg = getFileIcon(file.type);
 
+      // Formato del tamaño de archivo
+      const fileSize = formatFileSize(file.size);
+
       fileElement.innerHTML = `
         <div class="hydrous-message-file-icon">${iconSvg}</div>
-        <div class="hydrous-message-file-name">${file.name}</div>
+        <div class="hydrous-message-file-name">${file.name} (${fileSize})</div>
       `;
 
       // Añadir al mensaje
       lastMessage.querySelector('.hydrous-message-bubble').appendChild(fileElement);
     }
+  }
+
+  // Función auxiliar para formatear el tamaño del archivo
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / 1048576).toFixed(1) + ' MB';
   }
 
   // Limpiar vista previa de archivo
@@ -1474,6 +1547,12 @@
     const preview = inputContainer.querySelector('.hydrous-file-preview');
     if (preview) {
       preview.parentNode.removeChild(preview);
+    }
+
+    // Limpiar cualquier mensaje de estado sobre el archivo
+    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+    if (fileInfo) {
+      fileInfo.textContent = '';
     }
 
     // Si hay sendButton accesible, actualizar su estado
