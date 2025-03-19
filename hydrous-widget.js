@@ -5,7 +5,7 @@
 
   // Configuración por defecto
   const DEFAULT_CONFIG = {
-    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',  // Esta URL se cambiará a tu backend desplegado
+    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',
     primaryColor: '#0891b2',
     secondaryColor: '#e0f2fe',
     position: 'right',
@@ -14,15 +14,18 @@
     maxFileSize: 5, // en MB
     allowedFileTypes: ['image/*', 'application/pdf', '.xls', '.xlsx', '.csv', '.doc', '.docx'],
     showBranding: true,
-    autoOpen: false, // abrir automáticamente después de X segundos
-    autoOpenDelay: 5, // segundos para autoOpen
+    autoOpen: false,
+    autoOpenDelay: 5,
     language: 'es',
     enableFileUploads: true,
     mobile: {
-      fullscreen: true, // pantalla completa en móviles
-      breakpoint: 768 // tamaño para considerar móvil
+      fullscreen: true,
+      breakpoint: 768
     }
   };
+
+  // Variables compartidas para acceder a elementos de la UI
+  let uiElements = {};
 
   // Método de inicialización
   window.HydrousWidget.init = function (customConfig = {}) {
@@ -68,7 +71,8 @@
       isOpen: false,
       messages: [],
       conversationId: null,
-      isTyping: false
+      isTyping: false,
+      selectedFile: null
     };
 
     // Crear interfaz
@@ -85,26 +89,23 @@
 
   // Cargar librería de Markdown
   function loadMarkdownLibrary() {
-    if (window.marked) return; // Ya está cargada
+    if (window.marked) return;
 
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js';
     script.async = true;
 
-    // Configurar marked para seguridad cuando esté cargado
     script.onload = function () {
       if (window.marked) {
         window.marked.setOptions({
-          breaks: true, // Permite saltos de línea con un solo retorno
-          gfm: true,    // GitHub Flavored Markdown
-          sanitize: false, // No usar la sanitización interna (obsoleta)
-          // Usaremos DOMPurify para sanitización más segura
+          breaks: true,
+          gfm: true,
+          sanitize: false,
         });
       }
     };
     document.head.appendChild(script);
 
-    // También cargar DOMPurify para sanitización
     const purifyScript = document.createElement('script');
     purifyScript.src = 'https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js';
     purifyScript.async = true;
@@ -113,15 +114,12 @@
 
   // Función para trackear eventos
   function trackEvent(eventName, config, properties = {}) {
-    // No rastrear en modo desarrollo
     if (window.location.hostname === 'localhost') return;
 
-    // Datos básicos
     const eventData = {
       event: eventName,
       timestamp: new Date().toISOString(),
       url: window.location.origin,
-      // Evitar información sensible
       properties: {
         ...properties,
         screenWidth: window.innerWidth,
@@ -130,13 +128,11 @@
       }
     };
 
-    // Enviar al backend
     try {
       fetch(`${config.apiUrl}/analytics/event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(eventData),
-        // No esperar respuesta
         keepalive: true
       }).catch(() => { });
     } catch (e) {
@@ -144,7 +140,7 @@
     }
   }
 
-  // Función para cache
+  // Funciones para cache
   function saveToCache(key, data) {
     try {
       localStorage.setItem(`hydrous_${key}`, JSON.stringify(data));
@@ -459,7 +455,7 @@
         padding: 2px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         border: 1px solid #e2e8f0;
-        overflow: hidden; /* iMPORTARNTE PARA EVITAR DESBORDAMIENTO */
+        overflow: hidden;
         min-height: 48px;
       }
       
@@ -484,7 +480,7 @@
         line-height: 1.5;
         transition: border-color 0.2s ease;
         font-family: inherit;
-        overflow-y: auto;             /*permite el scroll vertical */
+        overflow-y: auto;
         box-sizing: border-box;
         display: block;
         white-space: pre-wrap;
@@ -794,8 +790,23 @@
     // Añadir ventana al contenedor
     container.appendChild(chatWindow);
 
+    // Almacenar referencias a elementos clave
+    uiElements = {
+      container,
+      chatButton,
+      chatWindow,
+      messagesContainer,
+      inputContainer,
+      textarea: inputContainer.querySelector('.hydrous-textarea'),
+      sendButton: inputContainer.querySelector('.hydrous-send-btn'),
+      fileButton: inputContainer.querySelector('.hydrous-file-btn'),
+      fileInput: inputContainer.querySelector('.hydrous-file-input'),
+      closeButton: chatWindow.querySelector('.hydrous-close-btn'),
+      resetButton: chatWindow.querySelector('.hydrous-reset-btn')
+    };
+
     // Configurar eventos
-    setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state);
+    setupEvents(config, state);
   }
 
   // Crear encabezado de chat
@@ -834,25 +845,27 @@
     return header;
   }
 
-  // Configurar eventos de la interfaz
-  function setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state) {
-    // Referencias a elementos
-    const closeButton = chatWindow.querySelector('.hydrous-close-btn');
-    const resetButton = chatWindow.querySelector('.hydrous-reset-btn');
-    const textarea = inputContainer.querySelector('.hydrous-textarea');
-    const sendButton = inputContainer.querySelector('.hydrous-send-btn');
-    const fileButton = inputContainer.querySelector('.hydrous-file-btn');
-    const fileInput = inputContainer.querySelector('.hydrous-file-input');
+  // Configurar eventos de la interfaz - COMPLETAMENTE REESCRITO
+  function setupEvents(config, state) {
+    // Acceso directo a elementos clave
+    const {
+      chatButton,
+      chatWindow,
+      messagesContainer,
+      inputContainer,
+      textarea,
+      sendButton,
+      fileButton,
+      fileInput,
+      closeButton,
+      resetButton
+    } = uiElements;
 
-    // Estado para el archivo
-    state.selectedFile = null;
-
-    // Función para actualizar el estado del botón de envío - extraída para mejor reuso
-    function updateSendButtonState() {
-      // Activar el botón si hay texto O si hay un archivo adjunto y no está escribiendo
-      const hasContent = textarea.value.trim().length > 0;
+    // Función central para actualizar estado del botón de envío
+    function updateSendButton() {
+      const hasText = textarea.value.trim().length > 0;
       const hasFile = state.selectedFile !== null;
-      const canSend = (hasContent || hasFile) && !state.isTyping;
+      const canSend = (hasText || hasFile) && !state.isTyping;
 
       if (canSend) {
         sendButton.classList.add('active');
@@ -863,7 +876,48 @@
       }
     }
 
-    // Evento de botón flotante para abrir
+    // Función para enviar mensaje
+    function sendMessage() {
+      const messageText = textarea.value.trim();
+
+      // Verificar si hay contenido para enviar
+      if (!(messageText || state.selectedFile) || state.isTyping) {
+        return;
+      }
+
+      // Añadir mensaje del usuario a la interfaz
+      if (messageText) {
+        addUserMessage(messagesContainer, messageText, state);
+      } else if (state.selectedFile) {
+        // Si no hay texto pero hay archivo, añadir un mensaje "vacío"
+        addUserMessage(messagesContainer, "", state);
+      }
+
+      // Si hay archivo adjunto, mostrarlo
+      if (state.selectedFile) {
+        addFileToMessage(messagesContainer, state.selectedFile);
+      }
+
+      // Limpiar textarea
+      textarea.value = '';
+      textarea.style.height = '48px';
+
+      // Enviar mensaje y archivo al backend
+      sendMessageToAPI(messagesContainer, messageText, config, state);
+
+      // Limpiar archivo adjunto
+      if (state.selectedFile) {
+        clearFilePreview(inputContainer, state);
+      }
+
+      // Actualizar estado del botón
+      updateSendButton();
+
+      // Registrar evento
+      trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
+    }
+
+    // Evento del botón flotante (abrir chat)
     chatButton.addEventListener('click', () => {
       state.isOpen = true;
       chatButton.style.display = 'none';
@@ -881,7 +935,7 @@
       trackEvent('chat_opened', config);
     });
 
-    // Evento de botón de cierre
+    // Evento del botón de cierre
     closeButton.addEventListener('click', () => {
       state.isOpen = false;
       chatWindow.style.display = 'none';
@@ -891,92 +945,48 @@
       trackEvent('chat_closed', config);
     });
 
-    // Evento de botón de reinicio
+    // Evento del botón de reinicio
     resetButton.addEventListener('click', () => {
       if (confirm("¿Estás seguro que deseas reiniciar la conversación? Se perderá todo el historial.")) {
         resetConversation(messagesContainer, config, state);
-
+        updateSendButton();
         // Registrar evento
         trackEvent('conversation_reset', config);
       }
     });
 
-    // Eventos de textarea - Mejorado para manejar texto largo
+    // Eventos del textarea
     textarea.addEventListener('input', () => {
-      // Guardar posición del cursor
-      const cursorPosition = textarea.selectionStart;
-
-      // Auto-expandir altura
+      // Ajustar altura automáticamente
       textarea.style.height = 'auto';
-
-      // Establecer nueva altura basada en contenido
       const newHeight = Math.min(textarea.scrollHeight, 120);
       textarea.style.height = newHeight + 'px';
 
-      // Asegurarse que el scroll esté en la posición correcta
-      if (textarea.scrollHeight > 120) {
-        // Calcular en qué línea está el cursor
-        const textBeforeCursor = textarea.value.substring(0, cursorPosition);
-        const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 24;
-        const linesBeforeCursor = textBeforeCursor.split('\n').length;
-
-        // Ajustar el scroll para mantener visible el cursor
-        const approximateCursorPosition = (linesBeforeCursor - 1) * lineHeight;
-        const visibleAreaStart = textarea.scrollTop;
-        const visibleAreaEnd = visibleAreaStart + 120;
-
-        if (approximateCursorPosition < visibleAreaStart) {
-          textarea.scrollTop = approximateCursorPosition;
-        } else if (approximateCursorPosition > visibleAreaEnd - lineHeight) {
-          textarea.scrollTop = approximateCursorPosition - 120 + lineHeight;
-        }
-      }
-
-      // Actualizar estado del botón de envío
-      updateSendButtonState();
+      // Actualizar botón de envío
+      updateSendButton();
     });
 
-    // Mejorar experiencia de usuario en el textarea
-    textarea.addEventListener('focus', () => {
-      // Al recibir foco, asegurarnos que hay espacio para escribir
-      textarea.style.height = 'auto';
-      const newHeight = Math.min(Math.max(textarea.scrollHeight, 48), 120);
-      textarea.style.height = newHeight + 'px';
-    });
-
-    // Manejo de teclas en textarea - corregido
+    // Evento de teclas en textarea
     textarea.addEventListener('keydown', (e) => {
-      // Si es la tecla Enter y no Shift+Enter
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (!sendButton.disabled) {
           sendMessage();
         }
-      } else if (e.key === 'Enter' && e.shiftKey) {
-        // Permitir el comportamiento por defecto para Shift+Enter (nueva línea)
-        setTimeout(() => {
-          textarea.style.height = 'auto';
-          textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-
-          // Mantener visibles las líneas más recientes
-          textarea.scrollTop = textarea.scrollHeight;
-        }, 0);
       }
     });
 
-    // Configurar eventos de archivo si está habilitado
+    // Eventos de archivo (si está habilitado)
     if (fileButton && fileInput) {
-      // Evento para botón de archivo
       fileButton.addEventListener('click', () => {
         fileInput.click();
       });
 
-      // Evento para cambio en input de archivo
       fileInput.addEventListener('change', () => {
         if (fileInput.files && fileInput.files[0]) {
           const file = fileInput.files[0];
 
-          // Verificar tamaño (máximo configurado)
+          // Verificar tamaño
           if (file.size > config.maxFileSize * 1024 * 1024) {
             const fileInfo = inputContainer.querySelector('.hydrous-file-info');
             fileInfo.textContent = `Error: El archivo excede el límite de ${config.maxFileSize}MB`;
@@ -984,25 +994,30 @@
             return;
           }
 
-          // Guardar archivo seleccionado
+          // Guardar archivo en estado
           state.selectedFile = file;
 
-          // Mostrar información del archivo
-          showFilePreview(inputContainer, file, state, updateSendButtonState);
+          // Mostrar vista previa
+          showFilePreview(inputContainer, file, state);
 
-          // Actualizar estado del botón de envío después de adjuntar un archivo
-          updateSendButtonState();
+          // Actualizar botón de envío
+          updateSendButton();
         }
       });
     }
 
-    // Función para limpiar vista previa del archivo - mejorada para recibir callback
+    // Evento del botón de envío
+    sendButton.addEventListener('click', sendMessage);
+
+    // Definir la función clearFilePreview en espacio global
     window.HydrousWidget.clearFilePreview = function (container, state) {
       // Limpiar estado
       state.selectedFile = null;
 
       // Limpiar input de archivo
-      if (fileInput) fileInput.value = '';
+      if (fileInput) {
+        fileInput.value = '';
+      }
 
       // Eliminar vista previa
       const preview = container.querySelector('.hydrous-file-preview');
@@ -1010,75 +1025,27 @@
         preview.parentNode.removeChild(preview);
       }
 
-      // Actualizar estado del botón después de eliminar el archivo
-      updateSendButtonState();
+      // Actualizar botón después de eliminar archivo
+      updateSendButton();
     };
-
-    // Evento de envío de mensajes - corregido
-    const sendMessage = () => {
-      const message = textarea.value.trim();
-
-      // Corregir la condición para permitir envío con solo archivo adjunto
-      // Esta es la parte clave: ahora verificamos correctamente si hay mensaje O archivo
-      const canSend = (message.length > 0 || state.selectedFile) && !state.isTyping;
-
-      if (!canSend) return;
-
-      // Añadir mensaje a la interfaz (solo si hay texto)
-      if (message) {
-        addUserMessage(messagesContainer, message, state);
-      } else if (state.selectedFile) {
-        // Si no hay mensaje pero hay archivo, crear un mensaje vacío para mostrar el archivo
-        addUserMessage(messagesContainer, "", state);
-      }
-
-      // Si hay archivo, mostrarlo en el mensaje
-      if (state.selectedFile) {
-        addFileToMessage(messagesContainer, state.selectedFile);
-      }
-
-      // Limpiar y resetear textarea
-      textarea.value = '';
-      textarea.style.height = '48px'; // Altura base fija
-
-      // Enviar a la API (con archivo si existe)
-      sendMessageToAPI(messagesContainer, message, config, state);
-
-      // Limpiar archivo
-      if (state.selectedFile) {
-        window.HydrousWidget.clearFilePreview(inputContainer, state);
-      }
-
-      // Actualizar botón de envío después de enviar
-      updateSendButtonState();
-
-      // Registrar evento
-      trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
-    };
-
-    // Enviar con botón
-    sendButton.addEventListener('click', sendMessage);
   }
 
   // Iniciar conversación
   async function startConversation(messagesContainer, config, state) {
     try {
-      // Limpiar contenedor de mensajes (por si hay mensajes de error)
+      // Limpiar contenedor de mensajes
       messagesContainer.innerHTML = '';
 
-      // Ya no mostramos un mensaje de bienvenida desde el frontend
-      // Solo iniciamos la conversación y esperamos respuestas del backend
-
-      // No conectamos con el backend hasta que el usuario envíe su primer mensaje
+      // Inicializar estado
       state.conversationStarted = false;
       state.conversationId = null;
 
-      // Intentar recuperar de cache primero
+      // Intentar recuperar de cache
       const cachedConversation = getFromCache('last_conversation');
       if (cachedConversation && cachedConversation.id) {
         state.conversationId = cachedConversation.id;
 
-        // Mostrar mensajes de cache mientras se valida
+        // Mostrar mensajes de cache
         if (cachedConversation.messages && cachedConversation.messages.length > 0) {
           cachedConversation.messages.forEach(msg => {
             if (msg.role === 'assistant') {
@@ -1089,7 +1056,7 @@
           });
         }
 
-        // Verificar si la conversación sigue activa en el servidor
+        // Verificar con el backend si la conversación sigue activa
         try {
           const response = await fetch(`${config.apiUrl}/chat/${state.conversationId}`);
           if (!response.ok) {
@@ -1098,21 +1065,30 @@
         } catch (e) {
           // Si hay error, iniciar nueva conversación
           state.conversationId = null;
-          // Limpiar mensajes mostrados de cache
           messagesContainer.innerHTML = '';
         }
       }
 
-      // Si no hay conversación en cache o no es válida, preparar para nueva conversación
-      // pero no iniciaremos nada hasta que el usuario envíe su primer mensaje
+      // Si no hay conversación en cache o no es válida, mostrar estado vacío
       if (!state.conversationId) {
-        // Dejar el contenedor vacío o con un indicador mínimo
-        // No iniciaremos la conversación automáticamente
+        messagesContainer.innerHTML = `
+          <div class="hydrous-empty-state">
+            <div class="hydrous-empty-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
+              </svg>
+            </div>
+            <h3 class="hydrous-empty-title">${config.title}</h3>
+            <p class="hydrous-empty-text">
+              Escriba su consulta para comenzar.
+            </p>
+          </div>
+        `;
       }
 
     } catch (err) {
       console.error('Error al preparar conversación:', err);
-      // En caso de error crítico, mostrar un mensaje de error técnico
+      // Mostrar mensaje de error
       addBotMessage(messagesContainer, "Error de conexión. Por favor, recarga la página.", state);
     } finally {
       state.isTyping = false;
@@ -1121,7 +1097,7 @@
 
   // Reiniciar conversación
   function resetConversation(messagesContainer, config, state) {
-    // Limpiar localStorage completamente
+    // Limpiar localStorage
     localStorage.removeItem('hydrous_conversation_id');
     localStorage.removeItem('hydrous_last_conversation');
 
@@ -1129,49 +1105,57 @@
     state.conversationId = null;
     state.messages = [];
     state.isConversationStarted = false;
+    state.selectedFile = null;
 
-    // Mostrar un indicador neutro de reinicio
+    // Limpiar UI
     messagesContainer.innerHTML = '';
 
-    // Restaurar el estado vacío
+    // Limpiar también cualquier archivo adjunto
+    if (uiElements.fileInput) {
+      uiElements.fileInput.value = '';
+    }
+
+    const filePreview = uiElements.inputContainer.querySelector('.hydrous-file-preview');
+    if (filePreview) {
+      filePreview.parentNode.removeChild(filePreview);
+    }
+
+    // Mostrar estado vacío
     messagesContainer.innerHTML = `
-    <div class="hydrous-empty-state">
-      <div class="hydrous-empty-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-        </svg>
+      <div class="hydrous-empty-state">
+        <div class="hydrous-empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
+          </svg>
+        </div>
+        <h3 class="hydrous-empty-title">${config.title}</h3>
+        <p class="hydrous-empty-text">
+          Conversación reiniciada. Escriba su consulta para comenzar.
+        </p>
       </div>
-      <h3 class="hydrous-empty-title">${config.title}</h3>
-      <p class="hydrous-empty-text">
-        Conversación reiniciada. Escriba su consulta para comenzar.
-      </p>
-    </div>
-  `;
+    `;
 
-    // NO iniciamos una nueva conversación automáticamente
-    // Esperamos a que el usuario escriba su primer mensaje
-
-    // Notificar el evento de reinicio
+    // Registrar evento
     trackEvent('conversation_reset', config);
   }
 
   // Enviar mensaje a la API
   async function sendMessageToAPI(messagesContainer, message, config, state) {
     try {
-      // Validar estado de la conexión
+      // Verificar conexión
       if (!navigator.onLine) {
         throw new Error("Sin conexión a internet");
       }
 
+      // Actualizar estado
       state.isTyping = true;
 
       // Mostrar indicador de escritura
       showTypingIndicator(messagesContainer);
 
-      // Si es el primer mensaje, iniciar la conversación en el backend
+      // Si es el primer mensaje, iniciar la conversación
       if (!state.conversationId || !state.conversationStarted) {
         try {
-          // Iniciar conversación en el backend
           const response = await fetch(`${config.apiUrl}/chat/start`, {
             method: 'POST',
             headers: {
@@ -1191,7 +1175,7 @@
           localStorage.setItem('hydrous_conversation_id', data.id);
 
         } catch (err) {
-          console.error('Error al iniciar conversación en backend:', err);
+          console.error('Error al iniciar conversación:', err);
           clearTypingIndicator(messagesContainer);
           addBotMessage(messagesContainer, "Lo siento, no puedo conectar con el asistente. Por favor, intenta de nuevo más tarde.", state);
           state.isTyping = false;
@@ -1199,29 +1183,22 @@
         }
       }
 
-      // Si no hay ID de conversación, intentar iniciar una (solo como respaldo)
+      // Si no hay ID de conversación, mostrar error
       if (!state.conversationId) {
-        try {
-          // En lugar de llamar a startConversation, que muestra un mensaje predefinido,
-          // podemos simplemente generar un error para que se maneje abajo
-          throw new Error("No se pudo obtener ID de conversación");
-        } catch (err) {
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
-          state.isTyping = false;
-          return;
-        }
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
+        state.isTyping = false;
+        return;
       }
 
-      // Una vez que tenemos ID de conversación, procesamos el mensaje
+      // Procesar mensaje con o sin archivo
       if (state.selectedFile) {
-        // Con archivo
+        // Enviar mensaje con archivo
         const formData = new FormData();
         formData.append('conversation_id', state.conversationId);
         formData.append('message', message || '');
         formData.append('file', state.selectedFile);
 
-        // Enviar mensaje con archivo
         const response = await fetch(`${config.apiUrl}/documents/upload`, {
           method: 'POST',
           body: formData
@@ -1231,19 +1208,12 @@
           throw new Error(`Error: ${response.status}`);
         }
 
-        // Procesar respuesta
         const data = await response.json();
-
-        // Limpiar indicador de escritura
         clearTypingIndicator(messagesContainer);
-
-        // Añadir respuesta del bot
         addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
-
-        // Actualizar cache
         updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
       } else {
-        // Sin archivo
+        // Enviar solo mensaje
         const response = await fetch(`${config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: {
@@ -1260,21 +1230,15 @@
         }
 
         const data = await response.json();
-
-        // Limpiar indicador de escritura
         clearTypingIndicator(messagesContainer);
-
-        // Añadir respuesta del bot (con soporte Markdown)
         addBotMessage(messagesContainer, data.message, state);
-
-        // Actualizar cache
         updateCachedMessages(state.conversationId, message, data.message);
       }
 
     } catch (err) {
       console.error('Error al enviar mensaje:', err);
 
-      // Mejorar mensajes de error según el tipo
+      // Mensaje de error adaptado
       let errorMessage = "Lo siento, ha ocurrido un error al procesar tu mensaje.";
 
       if (err.message === "Sin conexión a internet") {
@@ -1285,7 +1249,6 @@
         errorMessage = "La conexión tardó demasiado. Por favor, intenta nuevamente.";
       }
 
-      // Mensaje de error
       clearTypingIndicator(messagesContainer);
       addBotMessage(messagesContainer, errorMessage, state);
 
@@ -1307,12 +1270,12 @@
           { role: 'assistant', content: botMessage, timestamp: new Date() }
         );
 
-        // Limitar a los últimos 20 mensajes para no sobrecargar localStorage
+        // Limitar a los últimos 20 mensajes
         if (messages.length > 20) {
           messages.splice(0, messages.length - 20);
         }
 
-        // Guardar nuevamente
+        // Guardar
         saveToCache('last_conversation', {
           id: conversationId,
           messages: messages
@@ -1345,9 +1308,9 @@
       hour12: true
     });
 
-    // Contenido del mensaje
+    // Contenido del mensaje (incluso si está vacío para adjuntar el archivo)
     messageEl.innerHTML = `
-      <div class="hydrous-message-bubble">${escapeHtml(message)}</div>
+      <div class="hydrous-message-bubble">${message ? escapeHtml(message) : ''}</div>
       <div class="hydrous-message-time">${time}</div>
     `;
 
@@ -1358,7 +1321,7 @@
     scrollToBottom(messagesContainer);
   }
 
-  // Añadir mensaje del bot a la interfaz (con soporte Markdown)
+  // Añadir mensaje del bot a la interfaz
   function addBotMessage(messagesContainer, message, state, animate = true) {
     // Eliminar estado vacío si existe
     const emptyState = messagesContainer.querySelector('.hydrous-empty-state');
@@ -1380,15 +1343,13 @@
       hour12: true
     });
 
-    // Convertir Markdown a HTML si está disponible
+    // Convertir Markdown a HTML
     let formattedMessage = '';
 
     try {
       if (window.marked && window.DOMPurify) {
-        // Usar marked para convertir Markdown a HTML
         formattedMessage = window.DOMPurify.sanitize(window.marked.parse(message));
       } else {
-        // Fallback: Formateo básico de líneas nuevas y escape HTML
         formattedMessage = escapeHtml(message);
       }
     } catch (e) {
@@ -1445,7 +1406,7 @@
   }
 
   // Función para mostrar vista previa del archivo
-  function showFilePreview(inputContainer, file, state, updateButtonCallback) {
+  function showFilePreview(inputContainer, file, state) {
     // Limpiar previa vista previa
     window.HydrousWidget.clearFilePreview(inputContainer, state);
 
@@ -1477,7 +1438,7 @@
 
   // Añadir archivo al mensaje
   function addFileToMessage(messagesContainer, file) {
-    // Obtener último mensaje (que debería ser del usuario)
+    // Obtener último mensaje del usuario
     const lastMessage = messagesContainer.querySelector('.hydrous-message-user:last-child');
 
     if (lastMessage) {
@@ -1498,6 +1459,37 @@
     }
   }
 
+  // Limpiar vista previa de archivo
+  function clearFilePreview(inputContainer, state) {
+    // Limpiar estado
+    state.selectedFile = null;
+
+    // Limpiar input de archivo
+    const fileInput = uiElements.fileInput;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+
+    // Eliminar vista previa
+    const preview = inputContainer.querySelector('.hydrous-file-preview');
+    if (preview) {
+      preview.parentNode.removeChild(preview);
+    }
+
+    // Si hay sendButton accesible, actualizar su estado
+    if (uiElements.sendButton) {
+      const hasText = uiElements.textarea && uiElements.textarea.value.trim().length > 0;
+
+      if (hasText && !state.isTyping) {
+        uiElements.sendButton.classList.add('active');
+        uiElements.sendButton.disabled = false;
+      } else {
+        uiElements.sendButton.classList.remove('active');
+        uiElements.sendButton.disabled = true;
+      }
+    }
+  }
+
   // Obtener icono según tipo de archivo
   function getFileIcon(mimeType) {
     if (mimeType.startsWith('image/')) {
@@ -1515,13 +1507,21 @@
         <path d="M8 12H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 16H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
-    } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) {
+    } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('csv')) {
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 13H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 17H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M10 9H9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+    } else if (mimeType.includes('doc') || mimeType.includes('word')) {
+      return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M16 13H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M16 17H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
     } else {
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1545,6 +1545,6 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;")
-      .replace(/\n/g, "<br>"); // Convertir saltos de línea a <br>
+      .replace(/\n/g, "<br>");
   }
-})(); // NO SPACE HERE - This is important for terser
+})();
