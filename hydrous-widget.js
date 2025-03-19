@@ -834,18 +834,6 @@
     return header;
   }
 
-  // Función para actualizar el estado del botón de envío
-  function updateSendButtonState(textarea, sendButton, state) {
-    // Activar el botón si hay texto O si hay un archivo adjunto y no está escribiendo
-    if ((textarea.value.trim() || state.selectedFile) && !state.isTyping) {
-      sendButton.classList.add('active');
-      sendButton.disabled = false;
-    } else {
-      sendButton.classList.remove('active');
-      sendButton.disabled = true;
-    }
-  }
-
   // Configurar eventos de la interfaz
   function setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state) {
     // Referencias a elementos
@@ -859,13 +847,29 @@
     // Estado para el archivo
     state.selectedFile = null;
 
+    // Función para actualizar el estado del botón de envío - extraída para mejor reuso
+    function updateSendButtonState() {
+      // Activar el botón si hay texto O si hay un archivo adjunto y no está escribiendo
+      const hasContent = textarea.value.trim().length > 0;
+      const hasFile = state.selectedFile !== null;
+      const canSend = (hasContent || hasFile) && !state.isTyping;
+
+      if (canSend) {
+        sendButton.classList.add('active');
+        sendButton.disabled = false;
+      } else {
+        sendButton.classList.remove('active');
+        sendButton.disabled = true;
+      }
+    }
+
     // Evento de botón flotante para abrir
     chatButton.addEventListener('click', () => {
       state.isOpen = true;
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
 
-      // Mostar mensaje de bienvenida si el chat esta vacio
+      // Mostrar mensaje de bienvenida si el chat está vacío
       if (!messagesContainer.querySelector('.hydrous-message')) {
         startConversation(messagesContainer, config, state);
       }
@@ -899,7 +903,7 @@
 
     // Eventos de textarea - Mejorado para manejar texto largo
     textarea.addEventListener('input', () => {
-      // Guardar posicion del cursor
+      // Guardar posición del cursor
       const cursorPosition = textarea.selectionStart;
 
       // Auto-expandir altura
@@ -909,9 +913,9 @@
       const newHeight = Math.min(textarea.scrollHeight, 120);
       textarea.style.height = newHeight + 'px';
 
-      // Asegurarse que el scroll este en la posicion correcta
+      // Asegurarse que el scroll esté en la posición correcta
       if (textarea.scrollHeight > 120) {
-        // Calcular en que linea esta el cursor
+        // Calcular en qué línea está el cursor
         const textBeforeCursor = textarea.value.substring(0, cursorPosition);
         const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 24;
         const linesBeforeCursor = textBeforeCursor.split('\n').length;
@@ -928,17 +932,8 @@
         }
       }
 
-      // Activar/desactivar botón de envío
-      if (textarea.value.trim() && !state.isTyping) {
-        sendButton.classList.add('active');
-        sendButton.disabled = false;
-      } else {
-        sendButton.classList.remove('active');
-        sendButton.disabled = true;
-      }
-
-      // function para actualizar el estado del boton
-      updateSendButtonState(textarea, sendButton, state);
+      // Actualizar estado del botón de envío
+      updateSendButtonState();
     });
 
     // Mejorar experiencia de usuario en el textarea
@@ -969,7 +964,6 @@
       }
     });
 
-
     // Configurar eventos de archivo si está habilitado
     if (fileButton && fileInput) {
       // Evento para botón de archivo
@@ -994,21 +988,49 @@
           state.selectedFile = file;
 
           // Mostrar información del archivo
-          showFilePreview(inputContainer, file, state);
+          showFilePreview(inputContainer, file, state, updateSendButtonState);
 
-          // Actualizar estado del boton de envio despues de Adjuntar un archivo
-          updateSendButtonState(textarea, sendButton, state);
+          // Actualizar estado del botón de envío después de adjuntar un archivo
+          updateSendButtonState();
         }
       });
     }
 
-    // Evento de envío de mensajes
+    // Función para limpiar vista previa del archivo - mejorada para recibir callback
+    window.HydrousWidget.clearFilePreview = function (container, state) {
+      // Limpiar estado
+      state.selectedFile = null;
+
+      // Limpiar input de archivo
+      if (fileInput) fileInput.value = '';
+
+      // Eliminar vista previa
+      const preview = container.querySelector('.hydrous-file-preview');
+      if (preview) {
+        preview.parentNode.removeChild(preview);
+      }
+
+      // Actualizar estado del botón después de eliminar el archivo
+      updateSendButtonState();
+    };
+
+    // Evento de envío de mensajes - corregido
     const sendMessage = () => {
       const message = textarea.value.trim();
-      if ((!message && !state.selectedFile) || state.isTyping) return;
 
-      // Añadir mensaje a la interfaz
-      addUserMessage(messagesContainer, message, state);
+      // Corregir la condición para permitir envío con solo archivo adjunto
+      // Esta es la parte clave: ahora verificamos correctamente si hay mensaje O archivo
+      const canSend = (message.length > 0 || state.selectedFile) && !state.isTyping;
+
+      if (!canSend) return;
+
+      // Añadir mensaje a la interfaz (solo si hay texto)
+      if (message) {
+        addUserMessage(messagesContainer, message, state);
+      } else if (state.selectedFile) {
+        // Si no hay mensaje pero hay archivo, crear un mensaje vacío para mostrar el archivo
+        addUserMessage(messagesContainer, "", state);
+      }
 
       // Si hay archivo, mostrarlo en el mensaje
       if (state.selectedFile) {
@@ -1024,11 +1046,11 @@
 
       // Limpiar archivo
       if (state.selectedFile) {
-        clearFilePreview(inputContainer, state);
+        window.HydrousWidget.clearFilePreview(inputContainer, state);
       }
 
-      // Actualizar boton de envio despues de enviar
-      updateSendButtonState(textarea, sendButton, state);
+      // Actualizar botón de envío después de enviar
+      updateSendButtonState();
 
       // Registrar evento
       trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
@@ -1097,7 +1119,6 @@
     }
   }
 
-
   // Reiniciar conversación
   function resetConversation(messagesContainer, config, state) {
     // Limpiar localStorage completamente
@@ -1148,7 +1169,7 @@
       showTypingIndicator(messagesContainer);
 
       // Si es el primer mensaje, iniciar la conversación en el backend
-      if (!state.isConversationId || !state.isConversationStarted) {
+      if (!state.conversationId || !state.conversationStarted) {
         try {
           // Iniciar conversación en el backend
           const response = await fetch(`${config.apiUrl}/chat/start`, {
@@ -1164,7 +1185,7 @@
 
           const data = await response.json();
           state.conversationId = data.id;
-          state.isConversationStarted = true;
+          state.conversationStarted = true;
 
           // Guardar en localStorage
           localStorage.setItem('hydrous_conversation_id', data.id);
@@ -1424,9 +1445,9 @@
   }
 
   // Función para mostrar vista previa del archivo
-  function showFilePreview(inputContainer, file, state) {
+  function showFilePreview(inputContainer, file, state, updateButtonCallback) {
     // Limpiar previa vista previa
-    clearFilePreview(inputContainer, state);
+    window.HydrousWidget.clearFilePreview(inputContainer, state);
 
     // Crear elemento de vista previa
     const previewContainer = document.createElement('div');
@@ -1452,27 +1473,6 @@
     previewContainer.querySelector('.hydrous-file-preview-remove').addEventListener('click', () => {
       window.HydrousWidget.clearFilePreview(inputContainer, state);
     });
-  }
-
-  // Función para limpiar vista previa
-  function clearFilePreview(inputContainer, state) {
-    // Limpiar estado
-    state.selectedFile = null;
-
-    // Limpiar input de archivo
-    if (fileInput) fileInput.value = '';
-
-    // Eliminar vista previa
-    const preview = inputContainer.querySelector('.hydrous-file-preview');
-    if (preview) {
-      preview.parentNode.removeChild(preview);
-    }
-
-    // Actualizar estado del boton despues de eliminar el archivo
-    updateSendButtonState(textarea, sendButton, state);
-
-    // Reemplazar la función original con esta versión mejorada
-    window.HydrousWidget.clearFilePreview = clearFilePreview;
   }
 
   // Añadir archivo al mensaje
@@ -1547,4 +1547,4 @@
       .replace(/'/g, "&#039;")
       .replace(/\n/g, "<br>"); // Convertir saltos de línea a <br>
   }
-})();
+})(); // NO SPACE HERE - This is important for terser
