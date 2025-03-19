@@ -834,6 +834,18 @@
     return header;
   }
 
+  // Función para actualizar el estado del botón de envío
+  function updateSendButtonState(textarea, sendButton, state) {
+    // Activar el botón si hay texto O si hay un archivo adjunto y no está escribiendo
+    if ((textarea.value.trim() || state.selectedFile) && !state.isTyping) {
+      sendButton.classList.add('active');
+      sendButton.disabled = false;
+    } else {
+      sendButton.classList.remove('active');
+      sendButton.disabled = true;
+    }
+  }
+
   // Configurar eventos de la interfaz
   function setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state) {
     // Referencias a elementos
@@ -924,6 +936,9 @@
         sendButton.classList.remove('active');
         sendButton.disabled = true;
       }
+
+      // function para actualizar el estado del boton
+      updateSendButtonState(textarea, sendButton, state);
     });
 
     // Mejorar experiencia de usuario en el textarea
@@ -954,6 +969,7 @@
       }
     });
 
+
     // Configurar eventos de archivo si está habilitado
     if (fileButton && fileInput) {
       // Evento para botón de archivo
@@ -979,6 +995,9 @@
 
           // Mostrar información del archivo
           showFilePreview(inputContainer, file, state);
+
+          // Actualizar estado del boton de envio despues de Adjuntar un archivo
+          updateSendButtonState(textarea, sendButton, state);
         }
       });
     }
@@ -999,8 +1018,6 @@
       // Limpiar y resetear textarea
       textarea.value = '';
       textarea.style.height = '48px'; // Altura base fija
-      sendButton.classList.remove('active');
-      sendButton.disabled = true;
 
       // Enviar a la API (con archivo si existe)
       sendMessageToAPI(messagesContainer, message, config, state);
@@ -1009,6 +1026,9 @@
       if (state.selectedFile) {
         clearFilePreview(inputContainer, state);
       }
+
+      // Actualizar boton de envio despues de enviar
+      updateSendButtonState(textarea, sendButton, state);
 
       // Registrar evento
       trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
@@ -1430,7 +1450,7 @@
 
     // Configurar evento para eliminar archivo
     previewContainer.querySelector('.hydrous-file-preview-remove').addEventListener('click', () => {
-      clearFilePreview(inputContainer, state);
+      window.HydrousWidget.clearFilePreview(inputContainer, state);
     });
   }
 
@@ -1440,7 +1460,6 @@
     state.selectedFile = null;
 
     // Limpiar input de archivo
-    const fileInput = inputContainer.querySelector('.hydrous-file-input');
     if (fileInput) fileInput.value = '';
 
     // Eliminar vista previa
@@ -1448,6 +1467,12 @@
     if (preview) {
       preview.parentNode.removeChild(preview);
     }
+
+    // Actualizar estado del boton despues de eliminar el archivo
+    updateSendButtonState(textarea, sendButton, state);
+
+    // Reemplazar la función original con esta versión mejorada
+    window.HydrousWidget.clearFilePreview = clearFilePreview;
   }
 
   // Añadir archivo al mensaje
