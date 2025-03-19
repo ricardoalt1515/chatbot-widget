@@ -847,7 +847,7 @@
 
   // Configurar eventos de la interfaz
   function setupEvents(config, state) {
-    // Acceso directo a elementos clave
+    // Obtener referencias a los elementos de la UI
     const {
       chatButton,
       chatWindow,
@@ -861,8 +861,8 @@
       resetButton
     } = uiElements;
 
-    // Función central para actualizar estado del botón de envío
-    function updateSendButton() {
+    // Función para actualizar el estado del botón de envío
+    function updateSendButtonState() {
       const hasText = textarea.value.trim().length > 0;
       const hasFile = state.selectedFile !== null;
       const canSend = (hasText || hasFile) && !state.isTyping;
@@ -878,87 +878,339 @@
       }
     }
 
-    // Función para enviar mensaje
-    function sendMessage() {
+    // Función para enviar el mensaje y/o archivo
+    async function handleSendMessage() {
       const messageText = textarea.value.trim();
       const hasFile = state.selectedFile !== null;
 
-      // Verificar si hay contenido para enviar
+      // Verificar si hay algo que enviar
       if (!(messageText || hasFile) || state.isTyping) {
         console.log("No hay contenido para enviar o el bot está escribiendo");
         return;
       }
 
+      // Deshabilitar la interfaz durante el envío
+      sendButton.disabled = true;
+      textarea.disabled = true;
+      if (fileButton) fileButton.disabled = true;
+
+      // Mostrar feedback visual
+      if (hasFile) {
+        const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+        if (fileInfo) fileInfo.textContent = "Enviando archivo...";
+      }
+
       try {
-        // Deshabilitar botón y textarea durante el envío
-        sendButton.disabled = true;
-        textarea.disabled = true;
-
-        // Mostrar indicador visual de carga para archivos
-        if (hasFile) {
-          const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-          if (fileInfo) {
-            fileInfo.textContent = "Enviando archivo...";
-          }
-        }
-
         // Añadir mensaje del usuario a la interfaz
-        if (messageText) {
-          addUserMessage(messagesContainer, messageText, state);
-        } else if (hasFile) {
-          // Si no hay texto pero hay archivo, añadir un mensaje "vacío"
-          addUserMessage(messagesContainer, "", state);
-        }
+        addUserMessage(messagesContainer, messageText || "", state);
 
-        // Si hay archivo adjunto, mostrarlo
+        // Si hay archivo, mostrarlo en el mensaje
         if (hasFile) {
           addFileToMessage(messagesContainer, state.selectedFile);
+        }
+
+        // Preparar para enviar al backend
+        if (!state.conversationId || !state.conversationStarted) {
+          await initConversation(config, state, messagesContainer);
+        }
+
+        if (!state.conversationId) {
+          throw new Error("No se pudo iniciar la conversación");
         }
 
         // Limpiar textarea
         textarea.value = '';
         textarea.style.height = '48px';
 
-        // Crear una copia del archivo antes de enviar y limpiar
-        const fileCopy = hasFile ? state.selectedFile : null;
-
-        // Enviar mensaje y archivo al backend
-        // IMPORTANTE: Pasar la copia del archivo, no la referencia en state
-        sendMessageToAPI(messagesContainer, messageText, config, state, fileCopy);
-
-        // Limpiar archivo adjunto DESPUÉS de enviarlo
+        // Enviar al backend
         if (hasFile) {
-          clearFilePreview(inputContainer, state);
+          await sendFileToBackend(
+            config,
+            state,
+            messagesContainer,
+            messageText,
+            state.selectedFile
+          );
+
+          // Limpiar vista previa del archivo DESPUÉS del envío exitoso
+          const filePreview = inputContainer.querySelector('.hydrous-file-preview');
+          if (filePreview) filePreview.parentNode.removeChild(filePreview);
+
+          // Limpiar estado del archivo
+          state.selectedFile = null;
+          if (fileInput) fileInput.value = '';
+        } else {
+          await sendTextToBackend(
+            config,
+            state,
+            messagesContainer,
+            messageText
+          );
         }
 
-        // Registrar evento
+        // Registrar evento de analítica
         trackEvent('message_sent', config, { hasFile });
 
       } catch (error) {
         console.error("Error al enviar mensaje:", error);
 
-        // Mostrar mensaje de error al usuario
+        // Mostrar error al usuario
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(
+          messagesContainer,
+          "Lo siento, ocurrió un error al enviar tu mensaje. Por favor, intenta de nuevo.",
+          state
+        );
+
         const fileInfo = inputContainer.querySelector('.hydrous-file-info');
         if (fileInfo) {
-          fileInfo.textContent = "Error al enviar archivo. Intente de nuevo.";
+          fileInfo.textContent = "Error al enviar. Intente nuevamente.";
         }
       } finally {
-        // Rehabilitar controles
+        // Rehabilitar la interfaz
         textarea.disabled = false;
-        textarea.focus();
+        sendButton.disabled = false;
+        if (fileButton) fileButton.disabled = false;
 
         // Actualizar estado del botón
-        updateSendButton();
+        updateSendButtonState();
+
+        // Devolver foco al textarea
+        textarea.focus();
       }
     }
 
-    // Evento del botón flotante (abrir chat)
+    // Iniciar conversación con el backend
+    async function initConversation(config, state, messagesContainer) {
+      try {
+        // Mostrar indicador de escritura
+        showTypingIndicator(messagesContainer);
+
+        const response = await fetch(`${config.apiUrl}/chat/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        state.conversationId = data.id;
+        state.conversationStarted = true;
+
+        // Guardar en localStorage
+        localStorage.setItem('hydrous_conversation_id', data.id);
+
+      } catch (error) {
+        console.error("Error al iniciar conversación:", error);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(
+          messagesContainer,
+          "Lo siento, no se pudo iniciar la conversación. Por favor, recarga la página.",
+          state
+        );
+        throw error;
+      }
+    }
+
+    // Enviar archivo al backend
+    async function sendFileToBackend(config, state, messagesContainer, message, file) {
+      try {
+        // Mostrar indicador de escritura si no está ya visible
+        if (!messagesContainer.querySelector('.hydrous-typing')) {
+          showTypingIndicator(messagesContainer);
+        }
+
+        const formData = new FormData();
+        formData.append('conversation_id', state.conversationId);
+        formData.append('message', message || '');
+        formData.append('file', file);
+
+        console.log("Enviando archivo:", file.name, "tamaño:", file.size);
+
+        const response = await fetch(`${config.apiUrl}/documents/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Limpiar indicador de escritura
+        clearTypingIndicator(messagesContainer);
+
+        // Mostrar respuesta del bot
+        addBotMessage(
+          messagesContainer,
+          data.message || "Archivo recibido. Estamos procesando su contenido.",
+          state
+        );
+
+        // Actualizar cache
+        updateCachedMessages(
+          state.conversationId,
+          message,
+          data.message || "Archivo recibido. Estamos procesando su contenido."
+        );
+
+      } catch (error) {
+        console.error("Error al enviar archivo:", error);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(
+          messagesContainer,
+          "Lo siento, ocurrió un error al enviar el archivo. Por favor, intenta de nuevo.",
+          state
+        );
+        throw error;
+      }
+    }
+
+    // Enviar mensaje de texto al backend
+    async function sendTextToBackend(config, state, messagesContainer, message) {
+      try {
+        // Mostrar indicador de escritura si no está ya visible
+        if (!messagesContainer.querySelector('.hydrous-typing')) {
+          showTypingIndicator(messagesContainer);
+        }
+
+        const response = await fetch(`${config.apiUrl}/chat/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversation_id: state.conversationId,
+            message: message
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Limpiar indicador de escritura
+        clearTypingIndicator(messagesContainer);
+
+        // Mostrar respuesta del bot
+        addBotMessage(messagesContainer, data.message, state);
+
+        // Actualizar cache
+        updateCachedMessages(state.conversationId, message, data.message);
+
+      } catch (error) {
+        console.error("Error al enviar mensaje:", error);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(
+          messagesContainer,
+          "Lo siento, ocurrió un error al enviar tu mensaje. Por favor, intenta de nuevo.",
+          state
+        );
+        throw error;
+      }
+    }
+
+    // Gestionar la selección de archivo
+    function handleFileSelect(file) {
+      // Verificar tamaño
+      if (file.size > config.maxFileSize * 1024 * 1024) {
+        const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+        if (fileInfo) {
+          fileInfo.textContent = `Error: El archivo excede el límite de ${config.maxFileSize}MB`;
+        }
+        if (fileInput) fileInput.value = '';
+        return;
+      }
+
+      // Guardar en estado
+      state.selectedFile = file;
+
+      // Mostrar vista previa
+      showFilePreview(file);
+
+      // Actualizar estado del botón
+      updateSendButtonState();
+    }
+
+    // Mostrar vista previa del archivo
+    function showFilePreview(file) {
+      // Limpiar previa vista previa
+      clearFilePreview();
+
+      // Crear contenedor
+      const previewContainer = document.createElement('div');
+      previewContainer.className = 'hydrous-file-preview';
+
+      // Icono según tipo
+      const iconSvg = getFileIcon(file.type);
+
+      // Formatear tamaño
+      const fileSize = formatFileSize(file.size);
+
+      // Contenido
+      previewContainer.innerHTML = `
+        <div class="hydrous-file-preview-icon">${iconSvg}</div>
+        <div class="hydrous-file-preview-name" title="${file.name}">${file.name} (${fileSize})</div>
+        <button class="hydrous-file-preview-remove" title="Eliminar archivo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      `;
+
+      // Añadir al contenedor
+      inputContainer.querySelector('.hydrous-input-info').appendChild(previewContainer);
+
+      // Configurar evento para eliminar
+      previewContainer.querySelector('.hydrous-file-preview-remove')
+        .addEventListener('click', clearFilePreview);
+
+      // Mostrar mensaje informativo
+      const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+      if (fileInfo) {
+        fileInfo.textContent = "Archivo listo para enviar";
+      }
+    }
+
+    // Limpiar vista previa del archivo
+    function clearFilePreview() {
+      // Limpiar estado
+      state.selectedFile = null;
+
+      // Limpiar input de archivo
+      if (fileInput) fileInput.value = '';
+
+      // Eliminar vista previa
+      const preview = inputContainer.querySelector('.hydrous-file-preview');
+      if (preview) preview.parentNode.removeChild(preview);
+
+      // Limpiar mensaje informativo
+      const fileInfo = inputContainer.querySelector('.hydrous-file-info');
+      if (fileInfo) fileInfo.textContent = '';
+
+      // Actualizar estado del botón
+      updateSendButtonState();
+    }
+
+    // Formatear tamaño de archivo
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      else return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    // CONFIGURACIÓN DE EVENTOS
+
+    // Botón de chat (abrir widget)
     chatButton.addEventListener('click', () => {
       state.isOpen = true;
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
 
-      // Mostrar mensaje de bienvenida si el chat está vacío
+      // Mostrar mensaje de bienvenida si está vacío
       if (!messagesContainer.querySelector('.hydrous-message')) {
         startConversation(messagesContainer, config, state);
       }
@@ -966,52 +1218,53 @@
       // Enfocar textarea
       setTimeout(() => textarea.focus(), 300);
 
-      // Registrar evento
+      // Analítica
       trackEvent('chat_opened', config);
     });
 
-    // Evento del botón de cierre
+    // Botón de cierre
     closeButton.addEventListener('click', () => {
       state.isOpen = false;
       chatWindow.style.display = 'none';
       chatButton.style.display = 'flex';
 
-      // Registrar evento
+      // Analítica
       trackEvent('chat_closed', config);
     });
 
-    // Evento del botón de reinicio
+    // Botón de reinicio
     resetButton.addEventListener('click', () => {
       if (confirm("¿Estás seguro que deseas reiniciar la conversación? Se perderá todo el historial.")) {
         resetConversation(messagesContainer, config, state);
-        updateSendButton();
-        // Registrar evento
+        updateSendButtonState();
+
+        // Analítica
         trackEvent('conversation_reset', config);
       }
     });
 
     // Eventos del textarea
     textarea.addEventListener('input', () => {
-      // Ajustar altura automáticamente
+      // Ajustar altura
       textarea.style.height = 'auto';
       const newHeight = Math.min(textarea.scrollHeight, 120);
       textarea.style.height = newHeight + 'px';
 
-      // Actualizar botón de envío
-      updateSendButton();
+      // Actualizar botón
+      updateSendButtonState();
     });
 
-    // Evento de teclas en textarea
+    // Teclas en textarea
     textarea.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (!sendButton.disabled) {
-          sendMessage();
+          handleSendMessage();
         }
       }
     });
 
-    // Eventos de archivo (si está habilitado)
+    // Eventos de archivo
     if (fileButton && fileInput) {
       fileButton.addEventListener('click', () => {
         fileInput.click();
@@ -1019,61 +1272,20 @@
 
       fileInput.addEventListener('change', () => {
         if (fileInput.files && fileInput.files[0]) {
-          const file = fileInput.files[0];
-
-          // Verificar tamaño
-          if (file.size > config.maxFileSize * 1024 * 1024) {
-            const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-            fileInfo.textContent = `Error: El archivo excede el límite de ${config.maxFileSize}MB`;
-            fileInput.value = '';
-            return;
-          }
-
-          // Guardar archivo en estado
-          state.selectedFile = file;
-
-          // Mostrar vista previa
-          showFilePreview(inputContainer, file, state);
-
-          // Actualizar botón de envío
-          updateSendButton();
+          handleFileSelect(fileInput.files[0]);
         }
       });
     }
 
     // Evento del botón de envío
-    sendButton.addEventListener('click', function () {
-      console.log("Botón de envío clickeado, disabled:", sendButton.disabled);
+    sendButton.addEventListener('click', () => {
       if (!sendButton.disabled) {
-        sendMessage();
+        handleSendMessage();
       }
     });
 
-    // Definir la función clearFilePreview en espacio global
-    window.HydrousWidget.clearFilePreview = function (container, state) {
-      // Limpiar estado
-      state.selectedFile = null;
-
-      // Limpiar input de archivo
-      if (fileInput) {
-        fileInput.value = '';
-      }
-
-      // Eliminar vista previa
-      const preview = container.querySelector('.hydrous-file-preview');
-      if (preview) {
-        preview.parentNode.removeChild(preview);
-      }
-
-      // Limpiar cualquier mensaje de estado sobre el archivo
-      const fileInfo = container.querySelector('.hydrous-file-info');
-      if (fileInfo) {
-        fileInfo.textContent = '';
-      }
-
-      // Actualizar el estado del botón de envío
-      updateSendButton();
-    };
+    // Exponer clearFilePreview para uso global
+    window.HydrousWidget.clearFilePreview = clearFilePreview;
   }
 
   // Iniciar conversación
@@ -1183,132 +1395,6 @@
 
     // Registrar evento
     trackEvent('conversation_reset', config);
-  }
-
-  // Enviar mensaje a la API
-  async function sendMessageToAPI(messagesContainer, message, config, state, fileToUpload) {
-    try {
-      // Verificar conexión
-      if (!navigator.onLine) {
-        throw new Error("Sin conexión a internet");
-      }
-
-      // Actualizar estado
-      state.isTyping = true;
-
-      // Mostrar indicador de escritura
-      showTypingIndicator(messagesContainer);
-
-      // Si es el primer mensaje, iniciar la conversación
-      if (!state.conversationId || !state.conversationStarted) {
-        try {
-          const response = await fetch(`${config.apiUrl}/chat/start`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error(`Error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          state.conversationId = data.id;
-          state.conversationStarted = true;
-
-          // Guardar en localStorage
-          localStorage.setItem('hydrous_conversation_id', data.id);
-
-        } catch (err) {
-          console.error('Error al iniciar conversación:', err);
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, no puedo conectar con el asistente. Por favor, intenta de nuevo más tarde.", state);
-          state.isTyping = false;
-          return;
-        }
-      }
-
-      // Si no hay ID de conversación, mostrar error
-      if (!state.conversationId) {
-        clearTypingIndicator(messagesContainer);
-        addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
-        state.isTyping = false;
-        return;
-      }
-
-      // Procesar mensaje con o sin archivo
-      if (fileToUpload) {
-        // Enviar mensaje con archivo
-        console.log("Enviando archivo:", fileToUpload.name);
-
-        const formData = new FormData();
-        formData.append('conversation_id', state.conversationId);
-        formData.append('message', message || '');
-        formData.append('file', fileToUpload);
-
-        try {
-          const response = await fetch(`${config.apiUrl}/documents/upload`, {
-            method: 'POST',
-            body: formData
-          });
-
-          if (!response.ok) {
-            throw new Error(`Error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
-          updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
-        } catch (error) {
-          console.error("Error al subir archivo:", error);
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al subir el archivo. Por favor, intenta de nuevo más tarde.", state);
-        }
-      } else {
-        // Enviar solo mensaje
-        const response = await fetch(`${config.apiUrl}/chat/message`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            conversation_id: state.conversationId,
-            message: message
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        clearTypingIndicator(messagesContainer);
-        addBotMessage(messagesContainer, data.message, state);
-        updateCachedMessages(state.conversationId, message, data.message);
-      }
-
-    } catch (err) {
-      console.error('Error al enviar mensaje:', err);
-
-      // Mensaje de error adaptado
-      let errorMessage = "Lo siento, ha ocurrido un error al procesar tu mensaje.";
-
-      if (err.message === "Sin conexión a internet") {
-        errorMessage = "No hay conexión a internet. Por favor, verifica tu conexión e intenta nuevamente.";
-      } else if (err.message.includes("404")) {
-        errorMessage = "No se pudo conectar con el servidor. Por favor, intenta más tarde.";
-      } else if (err.message.includes("timeout")) {
-        errorMessage = "La conexión tardó demasiado. Por favor, intenta nuevamente.";
-      }
-
-      clearTypingIndicator(messagesContainer);
-      addBotMessage(messagesContainer, errorMessage, state);
-
-    } finally {
-      state.isTyping = false;
-    }
   }
 
   // Actualizar mensajes en cache
@@ -1459,46 +1545,6 @@
     }
   }
 
-  // Función para mostrar vista previa del archivo
-  function showFilePreview(inputContainer, file, state) {
-    // Limpiar previa vista previa
-    window.HydrousWidget.clearFilePreview(inputContainer, state);
-
-    // Crear elemento de vista previa
-    const previewContainer = document.createElement('div');
-    previewContainer.className = 'hydrous-file-preview';
-
-    // Icono según tipo de archivo
-    const iconSvg = getFileIcon(file.type);
-
-    // Formato del tamaño de archivo
-    const fileSize = formatFileSize(file.size);
-
-    previewContainer.innerHTML = `
-      <div class="hydrous-file-preview-icon">${iconSvg}</div>
-      <div class="hydrous-file-preview-name" title="${file.name}">${file.name} (${fileSize})</div>
-      <button class="hydrous-file-preview-remove" title="Eliminar archivo">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    `;
-
-    // Añadir al contenedor
-    inputContainer.querySelector('.hydrous-input-info').appendChild(previewContainer);
-
-    // Configurar evento para eliminar archivo
-    previewContainer.querySelector('.hydrous-file-preview-remove').addEventListener('click', () => {
-      window.HydrousWidget.clearFilePreview(inputContainer, state);
-    });
-
-    // Mostrar mensaje indicando que puede enviarse
-    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-    if (fileInfo) {
-      fileInfo.textContent = "Archivo listo para enviar";
-    }
-  }
-
   // Añadir archivo al mensaje
   function addFileToMessage(messagesContainer, file) {
     // Obtener último mensaje del usuario
@@ -1512,7 +1558,7 @@
       // Icono según tipo de archivo
       const iconSvg = getFileIcon(file.type);
 
-      // Formato del tamaño de archivo
+      // Formatear tamaño del archivo
       const fileSize = formatFileSize(file.size);
 
       fileElement.innerHTML = `
@@ -1530,43 +1576,6 @@
     if (bytes < 1024) return bytes + ' B';
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
     else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
-
-  // Limpiar vista previa de archivo
-  function clearFilePreview(inputContainer, state) {
-    // Limpiar estado
-    state.selectedFile = null;
-
-    // Limpiar input de archivo
-    const fileInput = uiElements.fileInput;
-    if (fileInput) {
-      fileInput.value = '';
-    }
-
-    // Eliminar vista previa
-    const preview = inputContainer.querySelector('.hydrous-file-preview');
-    if (preview) {
-      preview.parentNode.removeChild(preview);
-    }
-
-    // Limpiar cualquier mensaje de estado sobre el archivo
-    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-    if (fileInfo) {
-      fileInfo.textContent = '';
-    }
-
-    // Si hay sendButton accesible, actualizar su estado
-    if (uiElements.sendButton) {
-      const hasText = uiElements.textarea && uiElements.textarea.value.trim().length > 0;
-
-      if (hasText && !state.isTyping) {
-        uiElements.sendButton.classList.add('active');
-        uiElements.sendButton.disabled = false;
-      } else {
-        uiElements.sendButton.classList.remove('active');
-        uiElements.sendButton.disabled = true;
-      }
-    }
   }
 
   // Obtener icono según tipo de archivo
