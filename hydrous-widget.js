@@ -32,6 +32,9 @@
     // Combinar configuración
     const config = { ...DEFAULT_CONFIG, ...customConfig };
 
+    // Guardar config gloabal para acceder desde funciones de PDF
+    window.HydrousWidget.config = config;
+
     // Evitar duplicación
     if (document.getElementById('hydrous-chatbot-container')) {
       console.warn('Hydrous Widget ya está inicializado');
@@ -66,6 +69,9 @@
     // Cargar estilos
     loadStyles(config);
 
+    // cargar estilos específicos de para PDFs
+    addPdfStyles(config);
+
     // Estado del widget
     const state = {
       isOpen: false,
@@ -85,6 +91,10 @@
     if (document.getElementById('hydrous-loading-indicator')) {
       document.getElementById('hydrous-loading-indicator').remove();
     }
+
+    // Asignar la funcion de descarga al espacio global
+    window.HydrousWidget.handlePdfDownload = handlePdfDownload;
+
   };
 
   // Cargar librería de Markdown
@@ -708,6 +718,74 @@
         }
       }
     `;
+    document.head.appendChild(style);
+  }
+
+  // Cargar estilos específicos para PDFs
+  function addPdfStyles(config) {
+    const style = document.createElement('style');
+    style.textContent = `
+    .hydrous-pdf-download-btn {
+      display: inline-block;
+      background-color: ${config.primaryColor};
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      margin: 8px 0;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 10px rgba(8, 145, 178, 0.2);
+    }
+    
+    .hydrous-pdf-download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(8, 145, 178, 0.25);
+    }
+    
+    .hydrous-pdf-download-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 5px rgba(8, 145, 178, 0.2);
+    }
+    
+    .hydrous-download-info {
+      position: fixed;
+      bottom: 100px;
+      right: 20px;
+      background-color: ${config.primaryColor};
+      color: white;
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 14px;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: hydrous-fadeIn 0.3s ease;
+    }
+    
+    #hydrous-download-frame {
+      display: none;
+      position: absolute;
+      width: 0;
+      height: 0;
+      border: 0;
+      pointer-events: none;
+    }
+    
+    /* Estilo para iconos en botones */
+    .hydrous-pdf-download-btn::before {
+      content: "";
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'%3E%3C/path%3E%3Cpolyline points='7 10 12 15 17 10'%3E%3C/polyline%3E%3Cline x1='12' y1='15' x2='12' y2='3'%3E%3C/line%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: center;
+      vertical-align: middle;
+    }
+  `;
     document.head.appendChild(style);
   }
 
@@ -1375,6 +1453,154 @@
     scrollToBottom(messagesContainer);
   }
 
+  // Funcion para procesar mensajes y detectar enlaces de PDF
+  function processMessageContent(content, config) {
+    if (!content) return content;
+
+    // Detectar enlaces de descarga de PDF
+    const pdfLinkRegex = /\[DESCARGAR PROPUESTA EN PDF\]\(([^)]+)\)/g;
+
+    let modifiedContent = content;
+    let match;
+
+    while ((match = pdfLinkRegex.exec(content)) !== null) {
+      // Extraer URL del enlace
+      const originalUrl = match[1];
+
+      // Extraer ID de conversación
+      const conversationIdMatch = originalUrl.match(/\/api\/chat\/([^\/]+)\/download-pdf/);
+
+      if (conversationIdMatch && conversationIdMatch[1]) {
+        const conversationId = conversationIdMatch[1];
+
+        // Crear botón personalizado para descargar
+        const replacementButton = `<button class="hydrous-pdf-download-btn" data-conversation-id="${conversationId}">DESCARGAR PROPUESTA EN PDF</button>`;
+
+        // Reemplazar en el mensaje
+        modifiedContent = modifiedContent.replace(match[0], replacementButton);
+      }
+    }
+
+    return modifiedContent;
+  }
+
+
+  // Función para manejar la descarga del PDF
+  async function handlePdfDownload(conversationId, config) {
+    // Mostrar indicador de carga
+    const infoElement = document.createElement('div');
+    infoElement.className = 'hydrous-download-info';
+    infoElement.textContent = 'Preparando descarga...';
+    infoElement.style = `
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    background-color: ${config.primaryColor};
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 10000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+    document.body.appendChild(infoElement);
+
+    try {
+      // Intentar método 1: URL directa con data-URL fallback
+      const downloadUrl = `${config.apiUrl}/pdf/${conversationId}/download`;
+
+      // Crear iframe oculto
+      let downloadFrame = document.getElementById('hydrous-download-frame');
+      if (!downloadFrame) {
+        downloadFrame = document.createElement('iframe');
+        downloadFrame.id = 'hydrous-download-frame';
+        downloadFrame.style.display = 'none';
+        document.body.appendChild(downloadFrame);
+      }
+
+      // Primero intentar abrir en nueva ventana (esto puede ser bloqueado)
+      const newWindow = window.open(downloadUrl, '_blank');
+
+      // Si se bloqueó la ventana nueva o no se pudo abrir, intentar con iframe
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        // Actualizar mensaje
+        infoElement.textContent = 'Iniciando descarga...';
+
+        // Intentar usando iframe
+        downloadFrame.src = downloadUrl;
+
+        // Esperar un momento para ver si funciona
+        setTimeout(async () => {
+          try {
+            // Si el iframe no funciona, intentar con data URL
+            const response = await fetch(`${config.apiUrl}/pdf/${conversationId}/data-url`);
+
+            if (!response.ok) {
+              throw new Error('Error al obtener la URL de datos');
+            }
+
+            const data = await response.json();
+
+            if (data && data.data_url) {
+              // Crear un enlace para descarga directa
+              const a = document.createElement('a');
+              a.href = data.data_url;
+              a.download = data.filename || 'propuesta-hydrous.pdf';
+              a.style.display = 'none';
+              document.body.appendChild(a);
+              a.click();
+
+              // Limpiar
+              setTimeout(() => {
+                document.body.removeChild(a);
+                infoElement.textContent = 'Descarga completada.';
+
+                // Eliminar mensaje después de 3 segundos
+                setTimeout(() => {
+                  if (document.body.contains(infoElement)) {
+                    document.body.removeChild(infoElement);
+                  }
+                }, 3000);
+              }, 1000);
+            } else {
+              throw new Error('Formato de respuesta inválido');
+            }
+          } catch (error) {
+            console.error('Error al intentar métodos alternativos de descarga:', error);
+            infoElement.textContent = 'Error al descargar. Intente de nuevo.';
+
+            // Eliminar mensaje de error después de 3 segundos
+            setTimeout(() => {
+              if (document.body.contains(infoElement)) {
+                document.body.removeChild(infoElement);
+              }
+            }, 3000);
+          }
+        }, 2000);
+      } else {
+        // Si se abrió la ventana correctamente
+        infoElement.textContent = 'Descarga iniciada en nueva pestaña.';
+
+        // Eliminar mensaje después de 3 segundos
+        setTimeout(() => {
+          if (document.body.contains(infoElement)) {
+            document.body.removeChild(infoElement);
+          }
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Error al iniciar descarga:', error);
+      infoElement.textContent = 'Error al descargar. Intente de nuevo.';
+
+      // Eliminar mensaje de error después de 3 segundos
+      setTimeout(() => {
+        if (document.body.contains(infoElement)) {
+          document.body.removeChild(infoElement);
+        }
+      }, 3000);
+    }
+  }
+
   // Añadir mensaje del bot a la interfaz
   function addBotMessage(messagesContainer, message, state, animate = true) {
     // Eliminar estado vacío si existe
@@ -1402,7 +1628,10 @@
 
     try {
       if (window.marked && window.DOMPurify) {
-        formattedMessage = window.DOMPurify.sanitize(window.marked.parse(message));
+        // Procesar primero los enlaces de PDF
+        const processedMessage = processMessageContent(message, window.HydrousWidget.config || {});
+        // Luego convertir a HTML
+        formattedMessage = window.DOMPurify.sanitize(window.marked.parse(processedMessage));
       } else {
         formattedMessage = escapeHtml(message);
       }
@@ -1413,15 +1642,27 @@
 
     // Contenido del mensaje
     messageEl.innerHTML = `
-      <div class="hydrous-message-bubble">${formattedMessage}</div>
-      <div class="hydrous-message-time">
-        <span class="hydrous-bot-indicator"></span>
-        ${time}
-      </div>
-    `;
+    <div class="hydrous-message-bubble">${formattedMessage}</div>
+    <div class="hydrous-message-time">
+      <span class="hydrous-bot-indicator"></span>
+      ${time}
+    </div>
+  `;
 
     // Añadir a contenedor
     messagesContainer.appendChild(messageEl);
+
+    // Añadir evento click a botones de descarga
+    const downloadButtons = messageEl.querySelectorAll('.hydrous-pdf-download-btn');
+    downloadButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        const conversationId = button.getAttribute('data-conversation-id');
+        if (conversationId) {
+          handlePdfDownload(conversationId, window.HydrousWidget.config || {});
+        }
+      });
+    });
 
     // Scroll al final
     scrollToBottom(messagesContainer);
