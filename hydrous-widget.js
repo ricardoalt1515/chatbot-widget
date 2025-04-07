@@ -1196,6 +1196,30 @@
     scrollToBottom(messagesContainer);
   }
 
+  function updateSendButton() {
+    if (!uiElements.sendButton || !uiElements.textarea || !window.HydrousWidget.state) {
+      console.error("updateSendButton: Faltan elementos UI o estado"); // Log de error
+      return;
+    }
+    const state = window.HydrousWidget.state;
+    const hasText = uiElements.textarea.value.trim().length > 0;
+    const hasFile = state.selectedFile !== null;
+    const isTyping = state.isTyping; // Añadir variable para claridad
+    const canSend = (hasText || hasFile) && !isTyping; // Comprobar isTyping
+
+    // --- Añadir este log ---
+    console.log("updateSendButton:", { hasText, hasFile, isTyping, canSend });
+    // -----------------------
+
+    if (canSend) {
+      uiElements.sendButton.classList.add('active');
+      uiElements.sendButton.disabled = false;
+    } else {
+      uiElements.sendButton.classList.remove('active');
+      uiElements.sendButton.disabled = true;
+    }
+  }
+
   // Añadir mensaje del bot a la interfaz (con soporte Markdown)
   function addBotMessage(messagesContainer, message, state, animate = true) {
     // Eliminar estado vacío si existe
