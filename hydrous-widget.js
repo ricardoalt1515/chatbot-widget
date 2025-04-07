@@ -5,7 +5,7 @@
 
   // Configuración por defecto
   const DEFAULT_CONFIG = {
-    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',
+    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api', // Esta URL se cambiará a tu backend desplegado
     primaryColor: '#0891b2',
     secondaryColor: '#e0f2fe',
     position: 'right',
@@ -14,25 +14,25 @@
     maxFileSize: 5, // en MB
     allowedFileTypes: ['image/*', 'application/pdf', '.xls', '.xlsx', '.csv', '.doc', '.docx'],
     showBranding: true,
-    autoOpen: false,
-    autoOpenDelay: 5,
+    autoOpen: false, // abrir automáticamente después de X segundos
+    autoOpenDelay: 5, // segundos para autoOpen
     language: 'es',
     enableFileUploads: true,
+    welcomeMessage: "¡Hola! Soy Hydrous AI Water Solution Designer, y estoy aquí para ayudarte a diseñar soluciones de tratamiento y reciclaje de agua personalizadas para tu empresa. A través de un cuestionario, recopilaremos información clave para crear una propuesta técnica y económica que se ajuste a tus necesidades.\n\n¡Empecemos!", // Mensaje de bienvenida inicial
     mobile: {
-      fullscreen: true,
-      breakpoint: 768
+      fullscreen: true, // pantalla completa en móviles
+      breakpoint: 768 // tamaño para considerar móvil
     }
   };
 
-  // Variables compartidas para acceder a elementos de la UI
+  // Para referencias a elementos de UI globales dentro del widget
   let uiElements = {};
 
   // Método de inicialización
   window.HydrousWidget.init = function (customConfig = {}) {
+
     // Combinar configuración
     const config = { ...DEFAULT_CONFIG, ...customConfig };
-
-    // Guardar config gloabal para acceder desde funciones de PDF
     window.HydrousWidget.config = config;
 
     // Evitar duplicación
@@ -45,15 +45,13 @@
     const loadingIndicator = document.createElement('div');
     loadingIndicator.id = 'hydrous-loading-indicator';
     loadingIndicator.innerHTML = `
-      <div style="position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; border-radius: 50%; 
+      <div style="position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; border-radius: 50%;
                   background-color: #f1f5f9; display: flex; align-items: center; justify-content: center; z-index: 9998;">
-        <div style="width: 30px; height: 30px; border: 3px solid #e2e8f0; 
+        <div style="width: 30px; height: 30px; border: 3px solid #e2e8f0;
                     border-top-color: #0891b2; border-radius: 50%; animation: hydrous-spin 1s linear infinite;"></div>
       </div>
       <style>
-        @keyframes hydrous-spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes hydrous-spin { to { transform: rotate(360deg); } }
       </style>
     `;
     document.body.appendChild(loadingIndicator);
@@ -69,17 +67,15 @@
     // Cargar estilos
     loadStyles(config);
 
-    // cargar estilos específicos de para PDFs
-    addPdfStyles(config);
-
     // Estado del widget
     const state = {
       isOpen: false,
       messages: [],
       conversationId: null,
       isTyping: false,
-      selectedFile: null
+      selectedFile: null, // Añadido para manejar archivos
     };
+    window.HydrousWidget.state = state;
 
     // Crear interfaz
     createChatInterface(container, config, state);
@@ -91,31 +87,30 @@
     if (document.getElementById('hydrous-loading-indicator')) {
       document.getElementById('hydrous-loading-indicator').remove();
     }
-
-    // Asignar la funcion de descarga al espacio global
-    window.HydrousWidget.handlePdfDownload = handlePdfDownload;
-
   };
 
   // Cargar librería de Markdown
   function loadMarkdownLibrary() {
-    if (window.marked) return;
+    if (window.marked) return; // Ya está cargada
 
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js';
     script.async = true;
 
+    // Configurar marked para seguridad cuando esté cargado
     script.onload = function () {
       if (window.marked) {
         window.marked.setOptions({
-          breaks: true,
-          gfm: true,
-          sanitize: false,
+          breaks: true, // Permite saltos de línea con un solo retorno
+          gfm: true,    // GitHub Flavored Markdown
+          sanitize: false, // No usar la sanitización interna (obsoleta)
+          // Usaremos DOMPurify para sanitización más segura
         });
       }
     };
     document.head.appendChild(script);
 
+    // También cargar DOMPurify para sanitización
     const purifyScript = document.createElement('script');
     purifyScript.src = 'https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js';
     purifyScript.async = true;
@@ -124,12 +119,15 @@
 
   // Función para trackear eventos
   function trackEvent(eventName, config, properties = {}) {
+    // No rastrear en modo desarrollo
     if (window.location.hostname === 'localhost') return;
 
+    // Datos básicos
     const eventData = {
       event: eventName,
       timestamp: new Date().toISOString(),
       url: window.location.origin,
+      // Evitar información sensible
       properties: {
         ...properties,
         screenWidth: window.innerWidth,
@@ -138,11 +136,13 @@
       }
     };
 
+    // Enviar al backend
     try {
       fetch(`${config.apiUrl}/analytics/event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(eventData),
+        // No esperar respuesta
         keepalive: true
       }).catch(() => { });
     } catch (e) {
@@ -150,7 +150,7 @@
     }
   }
 
-  // Funciones para cache
+  // Función para cache
   function saveToCache(key, data) {
     try {
       localStorage.setItem(`hydrous_${key}`, JSON.stringify(data));
@@ -201,7 +201,7 @@
       }
       
       .hydrous-chat-window {
-        width: 650px;
+        width: 480px;
         height: 750px;
         border-radius: 16px;
         overflow: hidden;
@@ -465,7 +465,7 @@
         padding: 2px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         border: 1px solid #e2e8f0;
-        overflow: hidden;
+        overflow: hidden; /* iMPORTARNTE PARA EVITAR DESBORDAMIENTO */
         min-height: 48px;
       }
       
@@ -490,7 +490,7 @@
         line-height: 1.5;
         transition: border-color 0.2s ease;
         font-family: inherit;
-        overflow-y: auto;
+        overflow-y: auto;             /*permite el scroll vertical */
         box-sizing: border-box;
         display: block;
         white-space: pre-wrap;
@@ -721,74 +721,6 @@
     document.head.appendChild(style);
   }
 
-  // Cargar estilos específicos para PDFs
-  function addPdfStyles(config) {
-    const style = document.createElement('style');
-    style.textContent = `
-    .hydrous-pdf-download-btn {
-      display: inline-block;
-      background-color: ${config.primaryColor};
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      margin: 8px 0;
-      border-radius: 20px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 10px rgba(8, 145, 178, 0.2);
-    }
-    
-    .hydrous-pdf-download-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(8, 145, 178, 0.25);
-    }
-    
-    .hydrous-pdf-download-btn:active {
-      transform: translateY(0);
-      box-shadow: 0 2px 5px rgba(8, 145, 178, 0.2);
-    }
-    
-    .hydrous-download-info {
-      position: fixed;
-      bottom: 100px;
-      right: 20px;
-      background-color: ${config.primaryColor};
-      color: white;
-      padding: 10px 15px;
-      border-radius: 8px;
-      font-size: 14px;
-      z-index: 10000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      animation: hydrous-fadeIn 0.3s ease;
-    }
-    
-    #hydrous-download-frame {
-      display: none;
-      position: absolute;
-      width: 0;
-      height: 0;
-      border: 0;
-      pointer-events: none;
-    }
-    
-    /* Estilo para iconos en botones */
-    .hydrous-pdf-download-btn::before {
-      content: "";
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      margin-right: 6px;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'%3E%3C/path%3E%3Cpolyline points='7 10 12 15 17 10'%3E%3C/polyline%3E%3Cline x1='12' y1='15' x2='12' y2='3'%3E%3C/line%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: center;
-      vertical-align: middle;
-    }
-  `;
-    document.head.appendChild(style);
-  }
-
   // Crear interfaz de chat
   function createChatInterface(container, config, state) {
     // Botón flotante
@@ -796,10 +728,10 @@
     chatButton.className = 'hydrous-chat-button';
     chatButton.setAttribute('aria-label', 'Abrir chat');
     chatButton.innerHTML = `
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="white" stroke-width="2"></path>
-    </svg>
-  `;
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="white" stroke-width="2"></path>
+      </svg>
+    `;
     container.appendChild(chatButton);
 
     // Ventana de chat (inicialmente oculta)
@@ -814,21 +746,15 @@
     // Crear contenedor de mensajes
     const messagesContainer = document.createElement('div');
     messagesContainer.className = 'hydrous-messages-container';
-
-    // Estado vacío más neutral sin texto de bienvenida específico
     messagesContainer.innerHTML = `
-    <div class="hydrous-empty-state">
-      <div class="hydrous-empty-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-        </svg>
+      <div class="hydrous-empty-state">
+        <div class="hydrous-empty-icon">
+           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path></svg>
+        </div>
+        <h3 class="hydrous-empty-title">${config.title}</h3>
+        <p class="hydrous-empty-text">Escribe tu consulta para comenzar.</p>
       </div>
-      <h3 class="hydrous-empty-title">${config.title}</h3>
-      <p class="hydrous-empty-text">
-        Escriba su consulta para comenzar.
-      </p>
-    </div>
-  `;
+    `;
     chatWindow.appendChild(messagesContainer);
 
     // Crear área de entrada
@@ -868,9 +794,8 @@
     // Añadir ventana al contenedor
     container.appendChild(chatWindow);
 
-    // Almacenar referencias a elementos clave
+    // Guardar referencias en uiElements (global)
     uiElements = {
-      container,
       chatButton,
       chatWindow,
       messagesContainer,
@@ -879,8 +804,8 @@
       sendButton: inputContainer.querySelector('.hydrous-send-btn'),
       fileButton: inputContainer.querySelector('.hydrous-file-btn'),
       fileInput: inputContainer.querySelector('.hydrous-file-input'),
-      closeButton: chatWindow.querySelector('.hydrous-close-btn'),
-      resetButton: chatWindow.querySelector('.hydrous-reset-btn')
+      closeButton: header.querySelector('.hydrous-close-btn'), // Corregido: buscar en header
+      resetButton: header.querySelector('.hydrous-reset-btn')  // Corregido: buscar en header
     };
 
     // Configurar eventos
@@ -925,161 +850,48 @@
 
   // Configurar eventos de la interfaz
   function setupEvents(config, state) {
-    // Acceso directo a elementos clave
-    const {
-      chatButton,
-      chatWindow,
-      messagesContainer,
-      inputContainer,
-      textarea,
-      sendButton,
-      fileButton,
-      fileInput,
-      closeButton,
-      resetButton
-    } = uiElements;
+    // Referencias directas a traves de uiElements
+    const { chatButton, chatWindow, messagesContainer, inputContainer, textarea, sendButton, fileButton, fileInput, closeButton, resetButton } = uiElements;
 
-    // Función central para actualizar estado del botón de envío
-    function updateSendButton() {
-      const hasText = textarea.value.trim().length > 0;
-      const hasFile = state.selectedFile !== null;
-      const canSend = (hasText || hasFile) && !state.isTyping;
 
-      console.log("Estado del botón:", { hasText, hasFile, canSend });
-
-      if (canSend) {
-        sendButton.classList.add('active');
-        sendButton.disabled = false;
-      } else {
-        sendButton.classList.remove('active');
-        sendButton.disabled = true;
-      }
-    }
-
-    // Función para enviar mensaje
-    function sendMessage() {
-      const messageText = textarea.value.trim();
-      const hasFile = state.selectedFile !== null;
-
-      // Verificar si hay contenido para enviar
-      if (!(messageText || hasFile) || state.isTyping) {
-        console.log("No hay contenido para enviar o el bot está escribiendo");
-        return;
-      }
-
-      try {
-        // Deshabilitar botón y textarea durante el envío
-        sendButton.disabled = true;
-        textarea.disabled = true;
-
-        // Mostrar indicador visual de carga para archivos
-        if (hasFile) {
-          const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-          if (fileInfo) {
-            fileInfo.textContent = "Enviando archivo...";
-          }
-        }
-
-        // Añadir mensaje del usuario a la interfaz
-        if (messageText) {
-          addUserMessage(messagesContainer, messageText, state);
-        } else if (hasFile) {
-          // Si no hay texto pero hay archivo, añadir un mensaje "vacío"
-          addUserMessage(messagesContainer, "", state);
-        }
-
-        // Si hay archivo adjunto, mostrarlo
-        if (hasFile) {
-          addFileToMessage(messagesContainer, state.selectedFile);
-        }
-
-        // Limpiar textarea
-        textarea.value = '';
-        textarea.style.height = '48px';
-
-        // Crear una copia del archivo antes de enviar y limpiar
-        const fileCopy = hasFile ? state.selectedFile : null;
-
-        // Enviar mensaje y archivo al backend
-        // IMPORTANTE: Pasar la copia del archivo, no la referencia en state
-        sendMessageToAPI(messagesContainer, messageText, config, state, fileCopy);
-
-        // Limpiar archivo adjunto DESPUÉS de enviarlo
-        if (hasFile) {
-          clearFilePreview(inputContainer, state);
-        }
-
-        // Registrar evento
-        trackEvent('message_sent', config, { hasFile });
-
-      } catch (error) {
-        console.error("Error al enviar mensaje:", error);
-
-        // Mostrar mensaje de error al usuario
-        const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-        if (fileInfo) {
-          fileInfo.textContent = "Error al enviar archivo. Intente de nuevo.";
-        }
-      } finally {
-        // Rehabilitar controles
-        textarea.disabled = false;
-        textarea.focus();
-
-        // Actualizar estado del botón
-        updateSendButton();
-      }
-    }
-
-    // Evento del botón flotante (abrir chat)
+    // abrir chat
     chatButton.addEventListener('click', () => {
       state.isOpen = true;
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
-
-      // Mostrar mensaje de bienvenida si el chat está vacío
-      if (!messagesContainer.querySelector('.hydrous-message')) {
-        startConversation(messagesContainer, config, state);
+      // Si es la primera vez que se abre o se reinició, llamar a startConversation
+      if (!state.conversationId) {
+        startConversation(messagesContainer, config, state); // Llama a start para mostrar bienvenida
       }
-
-      // Enfocar textarea
-      setTimeout(() => textarea.focus(), 300);
-
-      // Registrar evento
+      setTimeout(() => textarea.focus(), 100); // Enfocar después de animación
       trackEvent('chat_opened', config);
     });
 
-    // Evento del botón de cierre
+    // Evento de botón de cierre
     closeButton.addEventListener('click', () => {
       state.isOpen = false;
       chatWindow.style.display = 'none';
       chatButton.style.display = 'flex';
-
-      // Registrar evento
       trackEvent('chat_closed', config);
     });
 
-    // Evento del botón de reinicio
+    // Reiniciar chat
     resetButton.addEventListener('click', () => {
       if (confirm("¿Estás seguro que deseas reiniciar la conversación? Se perderá todo el historial.")) {
         resetConversation(messagesContainer, config, state);
-        updateSendButton();
-        // Registrar evento
         trackEvent('conversation_reset', config);
       }
     });
 
-    // Eventos del textarea
+    // Textarea input
     textarea.addEventListener('input', () => {
-      // Ajustar altura automáticamente
+      // Auto-ajustar altura
       textarea.style.height = 'auto';
-      const newHeight = Math.min(textarea.scrollHeight, 120);
-      textarea.style.height = newHeight + 'px';
-
-      // Actualizar botón de envío
-      updateSendButton();
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      updateSendButton(); // Actualizar botón
     });
 
-    // Evento de teclas en textarea
+    // Textarea keydown (Enter para enviar)
     textarea.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -1089,133 +901,96 @@
       }
     });
 
-    // Eventos de archivo (si está habilitado)
-    if (fileButton && fileInput) {
-      fileButton.addEventListener('click', () => {
-        fileInput.click();
-      });
-
+    // Botón y input de archivo (si habilitado)
+    if (config.enableFileUploads && fileButton && fileInput) {
+      fileButton.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => {
         if (fileInput.files && fileInput.files[0]) {
           const file = fileInput.files[0];
-
-          // Verificar tamaño
           if (file.size > config.maxFileSize * 1024 * 1024) {
-            const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-            fileInfo.textContent = `Error: El archivo excede el límite de ${config.maxFileSize}MB`;
-            fileInput.value = '';
-            return;
+            alert(`Error: El archivo excede ${config.maxFileSize}MB.`);
+            fileInput.value = ''; return;
           }
-
-          // Guardar archivo en estado
           state.selectedFile = file;
-
-          // Mostrar vista previa
           showFilePreview(inputContainer, file, state);
-
-          // Actualizar botón de envío
           updateSendButton();
         }
       });
     }
 
-    // Evento del botón de envío
-    sendButton.addEventListener('click', function () {
-      console.log("Botón de envío clickeado, disabled:", sendButton.disabled);
-      if (!sendButton.disabled) {
-        sendMessage();
-      }
-    });
+    // Función interna para enviar (llamada por Enter o Click)
+    const sendMessage = () => {
+      const message = textarea.value.trim();
+      if ((!message && !state.selectedFile) || state.isTyping) return;
 
-    // Definir la función clearFilePreview en espacio global
-    window.HydrousWidget.clearFilePreview = function (container, state) {
-      // Limpiar estado
-      state.selectedFile = null;
+      addUserMessage(messagesContainer, message, state); // Mostrar mensaje usuario
 
-      // Limpiar input de archivo
-      if (fileInput) {
-        fileInput.value = '';
+      if (state.selectedFile) {
+        addFileToMessage(messagesContainer, state.selectedFile); // Mostrar archivo en mensaje
       }
 
-      // Eliminar vista previa
-      const preview = container.querySelector('.hydrous-file-preview');
-      if (preview) {
-        preview.parentNode.removeChild(preview);
+      const fileToSend = state.selectedFile; // Guardar referencia antes de limpiar
+      if (state.selectedFile) {
+        clearFilePreview(inputContainer, state); // Limpiar UI del archivo
       }
 
-      // Limpiar cualquier mensaje de estado sobre el archivo
-      const fileInfo = container.querySelector('.hydrous-file-info');
-      if (fileInfo) {
-        fileInfo.textContent = '';
-      }
+      textarea.value = '';
+      textarea.style.height = 'auto'; // Resetear altura
+      textarea.focus();
+      updateSendButton(); // Deshabilitar botón mientras se envía
 
-      // Actualizar el estado del botón de envío
-      updateSendButton();
+      sendMessageToAPI(messagesContainer, message, config, state, fileToSend); // Enviar al backend
+
+      trackEvent('message_sent', config, { hasFile: !!fileToSend });
     };
+
+    // Botón de envío click
+    sendButton.addEventListener('click', sendMessage);
   }
 
   // Iniciar conversación
   async function startConversation(messagesContainer, config, state) {
     try {
-      // Limpiar contenedor de mensajes
-      messagesContainer.innerHTML = '';
+      messagesContainer.innerHTML = ''; // Limpiar
+      state.isTyping = true; // Mostrar typing inicial
+      showTypingIndicator(messagesContainer);
 
-      // Inicializar estado
-      state.conversationStarted = false;
-      state.conversationId = null;
 
-      // Intentar recuperar de cache
-      const cachedConversation = getFromCache('last_conversation');
-      if (cachedConversation && cachedConversation.id) {
-        state.conversationId = cachedConversation.id;
-
-        // Mostrar mensajes de cache
-        if (cachedConversation.messages && cachedConversation.messages.length > 0) {
-          cachedConversation.messages.forEach(msg => {
-            if (msg.role === 'assistant') {
-              addBotMessage(messagesContainer, msg.content, state, false);
-            } else if (msg.role === 'user') {
-              addUserMessage(messagesContainer, msg.content, state, false);
-            }
-          });
-        }
-
-        // Verificar con el backend si la conversación sigue activa
-        try {
-          const response = await fetch(`${config.apiUrl}/chat/${state.conversationId}`);
-          if (!response.ok) {
-            throw new Error('Conversación no encontrada');
-          }
-        } catch (e) {
-          // Si hay error, iniciar nueva conversación
-          state.conversationId = null;
-          messagesContainer.innerHTML = '';
-        }
+      // Llamar a /start SOLO para obtener ID y saludo inicial del backend
+      const response = await fetch(`${config.apiUrl}/chat/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        const errTxt = await response.text();
+        throw new Error(`Error ${response.status}: ${errTxt}`);
       }
+      const data = await response.json();
 
-      // Si no hay conversación en cache o no es válida, mostrar estado vacío
-      if (!state.conversationId) {
-        messagesContainer.innerHTML = `
-          <div class="hydrous-empty-state">
-            <div class="hydrous-empty-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-              </svg>
-            </div>
-            <h3 class="hydrous-empty-title">${config.title}</h3>
-            <p class="hydrous-empty-text">
-              Escriba su consulta para comenzar.
-            </p>
-          </div>
-        `;
+      state.conversationId = data.id;
+      localStorage.setItem('hydrous_conversation_id', data.id); // Guardar ID
+
+      clearTypingIndicator(messagesContainer);
+
+      // Mostrar el primer mensaje que viene del backend (saludo/pregunta inicial)
+      if (data.messages && data.messages.length > 0) {
+        data.messages.forEach(msg => {
+          if (msg.role === 'assistant') {
+            addBotMessage(messagesContainer, msg.content, state);
+          }
+        });
+      } else {
+        // Fallback si /start no devuelve mensajes (usar welcomeMessage)
+        addBotMessage(messagesContainer, config.welcomeMessage, state);
       }
 
     } catch (err) {
-      console.error('Error al preparar conversación:', err);
-      // Mostrar mensaje de error
-      addBotMessage(messagesContainer, "Error de conexión. Por favor, recarga la página.", state);
+      console.error('Error al iniciar conversación:', err);
+      clearTypingIndicator(messagesContainer);
+      addBotMessage(messagesContainer, `Error al conectar: ${err.message}. Intenta recargar.`, state);
     } finally {
       state.isTyping = false;
+      updateSendButton(); // Actualizar botón
     }
   }
 
@@ -1223,169 +998,137 @@
   function resetConversation(messagesContainer, config, state) {
     // Limpiar localStorage
     localStorage.removeItem('hydrous_conversation_id');
-    localStorage.removeItem('hydrous_last_conversation');
 
     // Limpiar estado
     state.conversationId = null;
     state.messages = [];
-    state.isConversationStarted = false;
-    state.selectedFile = null;
 
-    // Limpiar UI
-    messagesContainer.innerHTML = '';
-
-    // Limpiar también cualquier archivo adjunto
-    if (uiElements.fileInput) {
-      uiElements.fileInput.value = '';
-    }
-
-    const filePreview = uiElements.inputContainer.querySelector('.hydrous-file-preview');
-    if (filePreview) {
-      filePreview.parentNode.removeChild(filePreview);
-    }
-
-    // Mostrar estado vacío
+    // Limpiar interfaz
     messagesContainer.innerHTML = `
-      <div class="hydrous-empty-state">
-        <div class="hydrous-empty-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-          </svg>
+      <div class="hydrous-message hydrous-message-bot">
+        <div class="hydrous-message-bubble">
+          Conversación reiniciada. Iniciando nuevo asistente...
         </div>
-        <h3 class="hydrous-empty-title">${config.title}</h3>
-        <p class="hydrous-empty-text">
-          Conversación reiniciada. Escriba su consulta para comenzar.
-        </p>
       </div>
     `;
 
-    // Registrar evento
-    trackEvent('conversation_reset', config);
+    // Mostrar indicador de escritura
+    showTypingIndicator(messagesContainer);
+
+    // Iniciar nueva conversación
+    setTimeout(() => {
+      startConversation(messagesContainer, config, state);
+    }, 1000);
   }
 
   // Enviar mensaje a la API
   async function sendMessageToAPI(messagesContainer, message, config, state, fileToUpload) {
     try {
-      // Verificar conexión
-      if (!navigator.onLine) {
-        throw new Error("Sin conexión a internet");
-      }
+      if (!navigator.onLine) throw new Error("Sin conexión a internet");
+      if (!state.conversationId) throw new Error("ID de conversación no establecido"); // Validar ID
 
-      // Actualizar estado
       state.isTyping = true;
-
-      // Mostrar indicador de escritura
       showTypingIndicator(messagesContainer);
+      updateSendButton(); // Deshabilitar botón
 
-      // Si es el primer mensaje, iniciar la conversación
-      if (!state.conversationId || !state.conversationStarted) {
-        try {
-          const response = await fetch(`${config.apiUrl}/chat/start`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
+      let response;
 
-          if (!response.ok) {
-            throw new Error(`Error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          state.conversationId = data.id;
-          state.conversationStarted = true;
-
-          // Guardar en localStorage
-          localStorage.setItem('hydrous_conversation_id', data.id);
-
-        } catch (err) {
-          console.error('Error al iniciar conversación:', err);
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, no puedo conectar con el asistente. Por favor, intenta de nuevo más tarde.", state);
-          state.isTyping = false;
-          return;
-        }
-      }
-
-      // Si no hay ID de conversación, mostrar error
-      if (!state.conversationId) {
-        clearTypingIndicator(messagesContainer);
-        addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
-        state.isTyping = false;
-        return;
-      }
-
-      // Procesar mensaje con o sin archivo
       if (fileToUpload) {
-        // Enviar mensaje con archivo
+        // --- Envío CON archivo ---
         console.log("Enviando archivo:", fileToUpload.name);
-
         const formData = new FormData();
         formData.append('conversation_id', state.conversationId);
         formData.append('message', message || '');
         formData.append('file', fileToUpload);
 
-        try {
-          const response = await fetch(`${config.apiUrl}/documents/upload`, {
-            method: 'POST',
-            body: formData
-          });
-
-          if (!response.ok) {
-            throw new Error(`Error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
-          updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
-        } catch (error) {
-          console.error("Error al subir archivo:", error);
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al subir el archivo. Por favor, intenta de nuevo más tarde.", state);
-        }
-      } else {
-        // Enviar solo mensaje
-        const response = await fetch(`${config.apiUrl}/chat/message`, {
+        response = await fetch(`${config.apiUrl}/documents/upload`, { // Asume endpoint de subida
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          body: formData
+        });
+
+      } else {
+        // --- Envío SIN archivo ---
+        console.log("Enviando mensaje:", message);
+        response = await fetch(`${config.apiUrl}/chat/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: state.conversationId,
             message: message
           })
         });
-
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        clearTypingIndicator(messagesContainer);
-        addBotMessage(messagesContainer, data.message, state);
-        updateCachedMessages(state.conversationId, message, data.message);
       }
+
+      // --- Procesar Respuesta ---
+      if (!response.ok) {
+        let errorDetail = `Error: ${response.status}`;
+        try { const errorData = await response.json(); errorDetail = errorData.detail || errorDetail; } catch (e) { }
+        throw new Error(errorDetail);
+      }
+
+      const data = await response.json();
+
+      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      // <<<<<<<<<<<<<<   INICIO: LÓGICA DE MANEJO DE RESPUESTA   <<<<<<<<<<<<<
+      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+      if (data.action === "trigger_download" && data.download_url) {
+        // Es señal para descargar PDF
+        console.log('Recibida señal para descargar PDF desde:', data.download_url);
+
+        // Mostrar mensaje temporal
+        const downloadInfo = document.createElement('div');
+        downloadInfo.className = 'hydrous-download-info'; // Reutilizar estilo si existe
+        downloadInfo.style.cssText = `position:fixed; bottom:80px; right:20px; background:${config.primaryColor}; color:white; padding:10px 15px; border-radius:8px; font-size:14px; z-index:10001; box-shadow:0 2px 5px rgba(0,0,0,0.2); animation: hydrous-fadeIn 0.3s ease;`; // Estilos inline
+        downloadInfo.textContent = 'Iniciando descarga del PDF...';
+        document.body.appendChild(downloadInfo);
+        setTimeout(() => { if (document.body.contains(downloadInfo)) document.body.removeChild(downloadInfo); }, 4000);
+
+        // Iniciar descarga
+        window.location.href = data.download_url; // Método más simple
+
+        // Limpiar indicador typing, NO mostrar mensaje de bot
+        clearTypingIndicator(messagesContainer);
+
+      } else if (data.message) {
+        // Mensaje normal del bot
+        console.log('Recibido mensaje normal del bot:', data.message);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(messagesContainer, data.message, state); // Mostrar en chat
+        // updateCachedMessages(...); // Actualizar caché si lo usas
+      } else {
+        // Respuesta inesperada
+        console.warn("Respuesta recibida sin mensaje o acción válida:", data);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(messagesContainer, "(Respuesta inesperada del asistente)", state);
+      }
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      // >>>>>>>>>>>>>>>>>>    FIN: LÓGICA DE MANEJO DE RESPUESTA   >>>>>>>>>>>
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     } catch (err) {
-      console.error('Error al enviar mensaje:', err);
-
-      // Mensaje de error adaptado
-      let errorMessage = "Lo siento, ha ocurrido un error al procesar tu mensaje.";
-
-      if (err.message === "Sin conexión a internet") {
-        errorMessage = "No hay conexión a internet. Por favor, verifica tu conexión e intenta nuevamente.";
-      } else if (err.message.includes("404")) {
-        errorMessage = "No se pudo conectar con el servidor. Por favor, intenta más tarde.";
-      } else if (err.message.includes("timeout")) {
-        errorMessage = "La conexión tardó demasiado. Por favor, intenta nuevamente.";
+      console.error('Error en sendMessageToAPI:', err);
+      let errorMessage = "Lo siento, ha ocurrido un error.";
+      if (typeof err.message === 'string') {
+        // ... (manejo de errores como antes) ...
+        if (err.message.includes("Failed to fetch") || err.message.includes("Sin conexión")) { errorMessage = "Error de conexión."; }
+        else if (err.message.includes("404")) { errorMessage = "Servidor no encontrado."; }
+        else if (err.message.includes("timeout") || err.message.includes("timed out")) { errorMessage = "La conexión tardó demasiado."; }
+        else if (err.message.includes("429")) { errorMessage = "Límite excedido. Espera."; }
+        else { errorMessage = `Error: ${err.message.substring(0, 100)}`; }
       }
-
       clearTypingIndicator(messagesContainer);
       addBotMessage(messagesContainer, errorMessage, state);
-
     } finally {
-      state.isTyping = false;
+      state.isTyping = false; // Siempre resetear typing
+      // Rehabilitar y actualizar botón/foco SIEMPRE
+      if (uiElements.textarea) uiElements.textarea.disabled = false;
+      updateSendButton(); // Actualizar estado del botón
+      // Poner foco solo si no se seleccionó un archivo (evita abrir teclado en móvil)
+      if (uiElements.textarea && !state.selectedFile) {
+        // Añadir un pequeño delay para asegurar que el re-enable ocurra antes del focus
+        setTimeout(() => uiElements.textarea.focus(), 50);
+      }
     }
   }
 
@@ -1402,12 +1145,12 @@
           { role: 'assistant', content: botMessage, timestamp: new Date() }
         );
 
-        // Limitar a los últimos 20 mensajes
+        // Limitar a los últimos 20 mensajes para no sobrecargar localStorage
         if (messages.length > 20) {
           messages.splice(0, messages.length - 20);
         }
 
-        // Guardar
+        // Guardar nuevamente
         saveToCache('last_conversation', {
           id: conversationId,
           messages: messages
@@ -1440,9 +1183,9 @@
       hour12: true
     });
 
-    // Contenido del mensaje (incluso si está vacío para adjuntar el archivo)
+    // Contenido del mensaje
     messageEl.innerHTML = `
-      <div class="hydrous-message-bubble">${message ? escapeHtml(message) : ''}</div>
+      <div class="hydrous-message-bubble">${escapeHtml(message)}</div>
       <div class="hydrous-message-time">${time}</div>
     `;
 
@@ -1453,155 +1196,7 @@
     scrollToBottom(messagesContainer);
   }
 
-  // Funcion para procesar mensajes y detectar enlaces de PDF
-  function processMessageContent(content, config) {
-    if (!content) return content;
-
-    // Detectar enlaces de descarga de PDF
-    const pdfLinkRegex = /\[DESCARGAR PROPUESTA EN PDF\]\(([^)]+)\)/g;
-
-    let modifiedContent = content;
-    let match;
-
-    while ((match = pdfLinkRegex.exec(content)) !== null) {
-      // Extraer URL del enlace
-      const originalUrl = match[1];
-
-      // Extraer ID de conversación
-      const conversationIdMatch = originalUrl.match(/\/api\/chat\/([^\/]+)\/download-pdf/);
-
-      if (conversationIdMatch && conversationIdMatch[1]) {
-        const conversationId = conversationIdMatch[1];
-
-        // Crear botón personalizado para descargar
-        const replacementButton = `<button class="hydrous-pdf-download-btn" data-conversation-id="${conversationId}">DESCARGAR PROPUESTA EN PDF</button>`;
-
-        // Reemplazar en el mensaje
-        modifiedContent = modifiedContent.replace(match[0], replacementButton);
-      }
-    }
-
-    return modifiedContent;
-  }
-
-
-  // Función para manejar la descarga del PDF
-  async function handlePdfDownload(conversationId, config) {
-    // Mostrar indicador de carga
-    const infoElement = document.createElement('div');
-    infoElement.className = 'hydrous-download-info';
-    infoElement.textContent = 'Preparando descarga...';
-    infoElement.style = `
-    position: fixed;
-    bottom: 100px;
-    right: 20px;
-    background-color: ${config.primaryColor};
-    color: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    font-size: 14px;
-    z-index: 10000;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  `;
-    document.body.appendChild(infoElement);
-
-    try {
-      // Intentar método 1: URL directa con data-URL fallback
-      const downloadUrl = `${config.apiUrl}/pdf/${conversationId}/download`;
-
-      // Crear iframe oculto
-      let downloadFrame = document.getElementById('hydrous-download-frame');
-      if (!downloadFrame) {
-        downloadFrame = document.createElement('iframe');
-        downloadFrame.id = 'hydrous-download-frame';
-        downloadFrame.style.display = 'none';
-        document.body.appendChild(downloadFrame);
-      }
-
-      // Primero intentar abrir en nueva ventana (esto puede ser bloqueado)
-      const newWindow = window.open(downloadUrl, '_blank');
-
-      // Si se bloqueó la ventana nueva o no se pudo abrir, intentar con iframe
-      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-        // Actualizar mensaje
-        infoElement.textContent = 'Iniciando descarga...';
-
-        // Intentar usando iframe
-        downloadFrame.src = downloadUrl;
-
-        // Esperar un momento para ver si funciona
-        setTimeout(async () => {
-          try {
-            // Si el iframe no funciona, intentar con data URL
-            const response = await fetch(`${config.apiUrl}/pdf/${conversationId}/data-url`);
-
-            if (!response.ok) {
-              throw new Error('Error al obtener la URL de datos');
-            }
-
-            const data = await response.json();
-
-            if (data && data.data_url) {
-              // Crear un enlace para descarga directa
-              const a = document.createElement('a');
-              a.href = data.data_url;
-              a.download = data.filename || 'propuesta-hydrous.pdf';
-              a.style.display = 'none';
-              document.body.appendChild(a);
-              a.click();
-
-              // Limpiar
-              setTimeout(() => {
-                document.body.removeChild(a);
-                infoElement.textContent = 'Descarga completada.';
-
-                // Eliminar mensaje después de 3 segundos
-                setTimeout(() => {
-                  if (document.body.contains(infoElement)) {
-                    document.body.removeChild(infoElement);
-                  }
-                }, 3000);
-              }, 1000);
-            } else {
-              throw new Error('Formato de respuesta inválido');
-            }
-          } catch (error) {
-            console.error('Error al intentar métodos alternativos de descarga:', error);
-            infoElement.textContent = 'Error al descargar. Intente de nuevo.';
-
-            // Eliminar mensaje de error después de 3 segundos
-            setTimeout(() => {
-              if (document.body.contains(infoElement)) {
-                document.body.removeChild(infoElement);
-              }
-            }, 3000);
-          }
-        }, 2000);
-      } else {
-        // Si se abrió la ventana correctamente
-        infoElement.textContent = 'Descarga iniciada en nueva pestaña.';
-
-        // Eliminar mensaje después de 3 segundos
-        setTimeout(() => {
-          if (document.body.contains(infoElement)) {
-            document.body.removeChild(infoElement);
-          }
-        }, 3000);
-      }
-    } catch (error) {
-      console.error('Error al iniciar descarga:', error);
-      infoElement.textContent = 'Error al descargar. Intente de nuevo.';
-
-      // Eliminar mensaje de error después de 3 segundos
-      setTimeout(() => {
-        if (document.body.contains(infoElement)) {
-          document.body.removeChild(infoElement);
-        }
-      }, 3000);
-    }
-  }
-
-  // Añadir mensaje del bot a la interfaz
+  // Añadir mensaje del bot a la interfaz (con soporte Markdown)
   function addBotMessage(messagesContainer, message, state, animate = true) {
     // Eliminar estado vacío si existe
     const emptyState = messagesContainer.querySelector('.hydrous-empty-state');
@@ -1623,16 +1218,15 @@
       hour12: true
     });
 
-    // Convertir Markdown a HTML
+    // Convertir Markdown a HTML si está disponible
     let formattedMessage = '';
 
     try {
       if (window.marked && window.DOMPurify) {
-        // Procesar primero los enlaces de PDF
-        const processedMessage = processMessageContent(message, window.HydrousWidget.config || {});
-        // Luego convertir a HTML
-        formattedMessage = window.DOMPurify.sanitize(window.marked.parse(processedMessage));
+        // Usar marked para convertir Markdown a HTML
+        formattedMessage = window.DOMPurify.sanitize(window.marked.parse(message));
       } else {
+        // Fallback: Formateo básico de líneas nuevas y escape HTML
         formattedMessage = escapeHtml(message);
       }
     } catch (e) {
@@ -1642,27 +1236,15 @@
 
     // Contenido del mensaje
     messageEl.innerHTML = `
-    <div class="hydrous-message-bubble">${formattedMessage}</div>
-    <div class="hydrous-message-time">
-      <span class="hydrous-bot-indicator"></span>
-      ${time}
-    </div>
-  `;
+      <div class="hydrous-message-bubble">${formattedMessage}</div>
+      <div class="hydrous-message-time">
+        <span class="hydrous-bot-indicator"></span>
+        ${time}
+      </div>
+    `;
 
     // Añadir a contenedor
     messagesContainer.appendChild(messageEl);
-
-    // Añadir evento click a botones de descarga
-    const downloadButtons = messageEl.querySelectorAll('.hydrous-pdf-download-btn');
-    downloadButtons.forEach(button => {
-      button.addEventListener('click', (e) => {
-        e.preventDefault();
-        const conversationId = button.getAttribute('data-conversation-id');
-        if (conversationId) {
-          handlePdfDownload(conversationId, window.HydrousWidget.config || {});
-        }
-      });
-    });
 
     // Scroll al final
     scrollToBottom(messagesContainer);
@@ -1703,7 +1285,7 @@
   // Función para mostrar vista previa del archivo
   function showFilePreview(inputContainer, file, state) {
     // Limpiar previa vista previa
-    window.HydrousWidget.clearFilePreview(inputContainer, state);
+    clearFilePreview(inputContainer, state);
 
     // Crear elemento de vista previa
     const previewContainer = document.createElement('div');
@@ -1712,12 +1294,9 @@
     // Icono según tipo de archivo
     const iconSvg = getFileIcon(file.type);
 
-    // Formato del tamaño de archivo
-    const fileSize = formatFileSize(file.size);
-
     previewContainer.innerHTML = `
       <div class="hydrous-file-preview-icon">${iconSvg}</div>
-      <div class="hydrous-file-preview-name" title="${file.name}">${file.name} (${fileSize})</div>
+      <div class="hydrous-file-preview-name">${file.name}</div>
       <button class="hydrous-file-preview-remove" title="Eliminar archivo">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1730,19 +1309,29 @@
 
     // Configurar evento para eliminar archivo
     previewContainer.querySelector('.hydrous-file-preview-remove').addEventListener('click', () => {
-      window.HydrousWidget.clearFilePreview(inputContainer, state);
+      clearFilePreview(inputContainer, state);
     });
+  }
 
-    // Mostrar mensaje indicando que puede enviarse
-    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-    if (fileInfo) {
-      fileInfo.textContent = "Archivo listo para enviar";
+  // Función para limpiar vista previa
+  function clearFilePreview(inputContainer, state) {
+    // Limpiar estado
+    state.selectedFile = null;
+
+    // Limpiar input de archivo
+    const fileInput = inputContainer.querySelector('.hydrous-file-input');
+    if (fileInput) fileInput.value = '';
+
+    // Eliminar vista previa
+    const preview = inputContainer.querySelector('.hydrous-file-preview');
+    if (preview) {
+      preview.parentNode.removeChild(preview);
     }
   }
 
   // Añadir archivo al mensaje
   function addFileToMessage(messagesContainer, file) {
-    // Obtener último mensaje del usuario
+    // Obtener último mensaje (que debería ser del usuario)
     const lastMessage = messagesContainer.querySelector('.hydrous-message-user:last-child');
 
     if (lastMessage) {
@@ -1753,60 +1342,13 @@
       // Icono según tipo de archivo
       const iconSvg = getFileIcon(file.type);
 
-      // Formato del tamaño de archivo
-      const fileSize = formatFileSize(file.size);
-
       fileElement.innerHTML = `
         <div class="hydrous-message-file-icon">${iconSvg}</div>
-        <div class="hydrous-message-file-name">${file.name} (${fileSize})</div>
+        <div class="hydrous-message-file-name">${file.name}</div>
       `;
 
       // Añadir al mensaje
       lastMessage.querySelector('.hydrous-message-bubble').appendChild(fileElement);
-    }
-  }
-
-  // Función auxiliar para formatear el tamaño del archivo
-  function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  }
-
-  // Limpiar vista previa de archivo
-  function clearFilePreview(inputContainer, state) {
-    // Limpiar estado
-    state.selectedFile = null;
-
-    // Limpiar input de archivo
-    const fileInput = uiElements.fileInput;
-    if (fileInput) {
-      fileInput.value = '';
-    }
-
-    // Eliminar vista previa
-    const preview = inputContainer.querySelector('.hydrous-file-preview');
-    if (preview) {
-      preview.parentNode.removeChild(preview);
-    }
-
-    // Limpiar cualquier mensaje de estado sobre el archivo
-    const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-    if (fileInfo) {
-      fileInfo.textContent = '';
-    }
-
-    // Si hay sendButton accesible, actualizar su estado
-    if (uiElements.sendButton) {
-      const hasText = uiElements.textarea && uiElements.textarea.value.trim().length > 0;
-
-      if (hasText && !state.isTyping) {
-        uiElements.sendButton.classList.add('active');
-        uiElements.sendButton.disabled = false;
-      } else {
-        uiElements.sendButton.classList.remove('active');
-        uiElements.sendButton.disabled = true;
-      }
     }
   }
 
@@ -1827,21 +1369,13 @@
         <path d="M8 12H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 16H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
-    } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('csv')) {
+    } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) {
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 13H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 17H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M10 9H9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>`;
-    } else if (mimeType.includes('doc') || mimeType.includes('word')) {
-      return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M16 13H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M16 17H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M10 9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
     } else {
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1865,6 +1399,6 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;")
-      .replace(/\n/g, "<br>");
+      .replace(/\n/g, "<br>"); // Convertir saltos de línea a <br>
   }
 })();

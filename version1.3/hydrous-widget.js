@@ -5,7 +5,7 @@
 
   // Configuración por defecto
   const DEFAULT_CONFIG = {
-    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api',  // Esta URL se cambiará a tu backend desplegado
+    apiUrl: 'https://backend-chatbot-owzs.onrender.com/api', // Esta URL se cambiará a tu backend desplegado
     primaryColor: '#0891b2',
     secondaryColor: '#e0f2fe',
     position: 'right',
@@ -18,16 +18,22 @@
     autoOpenDelay: 5, // segundos para autoOpen
     language: 'es',
     enableFileUploads: true,
+    welcomeMessage: "¡Hola! Soy Hydrous AI Water Solution Designer, y estoy aquí para ayudarte a diseñar soluciones de tratamiento y reciclaje de agua personalizadas para tu empresa. A través de un cuestionario, recopilaremos información clave para crear una propuesta técnica y económica que se ajuste a tus necesidades.\n\n¡Empecemos!", // Mensaje de bienvenida inicial
     mobile: {
       fullscreen: true, // pantalla completa en móviles
       breakpoint: 768 // tamaño para considerar móvil
     }
   };
 
+  // Para referencias a elementos de UI globales dentro del widget
+  let uiElements = {};
+
   // Método de inicialización
   window.HydrousWidget.init = function (customConfig = {}) {
+
     // Combinar configuración
     const config = { ...DEFAULT_CONFIG, ...customConfig };
+    window.HydrousWidget.config = config;
 
     // Evitar duplicación
     if (document.getElementById('hydrous-chatbot-container')) {
@@ -39,15 +45,13 @@
     const loadingIndicator = document.createElement('div');
     loadingIndicator.id = 'hydrous-loading-indicator';
     loadingIndicator.innerHTML = `
-      <div style="position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; border-radius: 50%; 
+      <div style="position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; border-radius: 50%;
                   background-color: #f1f5f9; display: flex; align-items: center; justify-content: center; z-index: 9998;">
-        <div style="width: 30px; height: 30px; border: 3px solid #e2e8f0; 
+        <div style="width: 30px; height: 30px; border: 3px solid #e2e8f0;
                     border-top-color: #0891b2; border-radius: 50%; animation: hydrous-spin 1s linear infinite;"></div>
       </div>
       <style>
-        @keyframes hydrous-spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes hydrous-spin { to { transform: rotate(360deg); } }
       </style>
     `;
     document.body.appendChild(loadingIndicator);
@@ -68,8 +72,10 @@
       isOpen: false,
       messages: [],
       conversationId: null,
-      isTyping: false
+      isTyping: false,
+      selectedFile: null, // Añadido para manejar archivos
     };
+    window.HydrousWidget.state = state;
 
     // Crear interfaz
     createChatInterface(container, config, state);
@@ -743,14 +749,10 @@
     messagesContainer.innerHTML = `
       <div class="hydrous-empty-state">
         <div class="hydrous-empty-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path>
-          </svg>
+           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" stroke="${config.primaryColor}" stroke-width="2"></path></svg>
         </div>
-        <h3 class="hydrous-empty-title">Asistente de Reciclaje de Agua</h3>
-        <p class="hydrous-empty-text">
-          Inicie una consulta sobre nuestras soluciones tecnológicas para el tratamiento y reciclaje de agua.
-        </p>
+        <h3 class="hydrous-empty-title">${config.title}</h3>
+        <p class="hydrous-empty-text">Escribe tu consulta para comenzar.</p>
       </div>
     `;
     chatWindow.appendChild(messagesContainer);
@@ -792,8 +794,22 @@
     // Añadir ventana al contenedor
     container.appendChild(chatWindow);
 
+    // Guardar referencias en uiElements (global)
+    uiElements = {
+      chatButton,
+      chatWindow,
+      messagesContainer,
+      inputContainer,
+      textarea: inputContainer.querySelector('.hydrous-textarea'),
+      sendButton: inputContainer.querySelector('.hydrous-send-btn'),
+      fileButton: inputContainer.querySelector('.hydrous-file-btn'),
+      fileInput: inputContainer.querySelector('.hydrous-file-input'),
+      closeButton: header.querySelector('.hydrous-close-btn'), // Corregido: buscar en header
+      resetButton: header.querySelector('.hydrous-reset-btn')  // Corregido: buscar en header
+    };
+
     // Configurar eventos
-    setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state);
+    setupEvents(config, state);
   }
 
   // Crear encabezado de chat
@@ -833,33 +849,21 @@
   }
 
   // Configurar eventos de la interfaz
-  function setupEvents(chatButton, chatWindow, messagesContainer, inputContainer, config, state) {
-    // Referencias a elementos
-    const closeButton = chatWindow.querySelector('.hydrous-close-btn');
-    const resetButton = chatWindow.querySelector('.hydrous-reset-btn');
-    const textarea = inputContainer.querySelector('.hydrous-textarea');
-    const sendButton = inputContainer.querySelector('.hydrous-send-btn');
-    const fileButton = inputContainer.querySelector('.hydrous-file-btn');
-    const fileInput = inputContainer.querySelector('.hydrous-file-input');
+  function setupEvents(config, state) {
+    // Referencias directas a traves de uiElements
+    const { chatButton, chatWindow, messagesContainer, inputContainer, textarea, sendButton, fileButton, fileInput, closeButton, resetButton } = uiElements;
 
-    // Estado para el archivo
-    state.selectedFile = null;
 
-    // Evento de botón flotante para abrir
+    // abrir chat
     chatButton.addEventListener('click', () => {
       state.isOpen = true;
       chatButton.style.display = 'none';
       chatWindow.style.display = 'flex';
-
-      // Mostar mensaje de bienvenida si el chat esta vacio
-      if (!messagesContainer.querySelector('.hydrous-message')) {
-        startConversation(messagesContainer, config, state);
+      // Si es la primera vez que se abre o se reinició, llamar a startConversation
+      if (!state.conversationId) {
+        startConversation(messagesContainer, config, state); // Llama a start para mostrar bienvenida
       }
-
-      // Enfocar textarea
-      setTimeout(() => textarea.focus(), 300);
-
-      // Registrar evento
+      setTimeout(() => textarea.focus(), 100); // Enfocar después de animación
       trackEvent('chat_opened', config);
     });
 
@@ -868,255 +872,125 @@
       state.isOpen = false;
       chatWindow.style.display = 'none';
       chatButton.style.display = 'flex';
-
-      // Registrar evento
       trackEvent('chat_closed', config);
     });
 
-    // Evento de botón de reinicio
+    // Reiniciar chat
     resetButton.addEventListener('click', () => {
       if (confirm("¿Estás seguro que deseas reiniciar la conversación? Se perderá todo el historial.")) {
         resetConversation(messagesContainer, config, state);
-
-        // Registrar evento
         trackEvent('conversation_reset', config);
       }
     });
 
-    // Eventos de textarea - Mejorado para manejar texto largo
+    // Textarea input
     textarea.addEventListener('input', () => {
-      // Guardar posicion del cursor
-      const cursorPosition = textarea.selectionStart;
-
-      // Auto-expandir altura
+      // Auto-ajustar altura
       textarea.style.height = 'auto';
-
-      // Establecer nueva altura basada en contenido
-      const newHeight = Math.min(textarea.scrollHeight, 120);
-      textarea.style.height = newHeight + 'px';
-
-      // Asegurarse que el scroll este en la posicion correcta
-      if (textarea.scrollHeight > 120) {
-        // Calcular en que linea esta el cursor
-        const textBeforeCursor = textarea.value.substring(0, cursorPosition);
-        const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 24;
-        const linesBeforeCursor = textBeforeCursor.split('\n').length;
-
-        // Ajustar el scroll para mantener visible el cursor
-        const approximateCursorPosition = (linesBeforeCursor - 1) * lineHeight;
-        const visibleAreaStart = textarea.scrollTop;
-        const visibleAreaEnd = visibleAreaStart + 120;
-
-        if (approximateCursorPosition < visibleAreaStart) {
-          textarea.scrollTop = approximateCursorPosition;
-        } else if (approximateCursorPosition > visibleAreaEnd - lineHeight) {
-          textarea.scrollTop = approximateCursorPosition - 120 + lineHeight;
-        }
-      }
-
-      // Activar/desactivar botón de envío
-      if (textarea.value.trim() && !state.isTyping) {
-        sendButton.classList.add('active');
-        sendButton.disabled = false;
-      } else {
-        sendButton.classList.remove('active');
-        sendButton.disabled = true;
-      }
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      updateSendButton(); // Actualizar botón
     });
 
-    // Mejorar experiencia de usuario en el textarea
-    textarea.addEventListener('focus', () => {
-      // Al recibir foco, asegurarnos que hay espacio para escribir
-      textarea.style.height = 'auto';
-      const newHeight = Math.min(Math.max(textarea.scrollHeight, 48), 120);
-      textarea.style.height = newHeight + 'px';
-    });
-
-    // Manejo de teclas en textarea - corregido
+    // Textarea keydown (Enter para enviar)
     textarea.addEventListener('keydown', (e) => {
-      // Si es la tecla Enter y no Shift+Enter
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (!sendButton.disabled) {
           sendMessage();
         }
-      } else if (e.key === 'Enter' && e.shiftKey) {
-        // Permitir el comportamiento por defecto para Shift+Enter (nueva línea)
-        setTimeout(() => {
-          textarea.style.height = 'auto';
-          textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-
-          // Mantener visibles las líneas más recientes
-          textarea.scrollTop = textarea.scrollHeight;
-        }, 0);
       }
     });
 
-    // Configurar eventos de archivo si está habilitado
-    if (fileButton && fileInput) {
-      // Evento para botón de archivo
-      fileButton.addEventListener('click', () => {
-        fileInput.click();
-      });
-
-      // Evento para cambio en input de archivo
+    // Botón y input de archivo (si habilitado)
+    if (config.enableFileUploads && fileButton && fileInput) {
+      fileButton.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => {
         if (fileInput.files && fileInput.files[0]) {
           const file = fileInput.files[0];
-
-          // Verificar tamaño (máximo configurado)
           if (file.size > config.maxFileSize * 1024 * 1024) {
-            const fileInfo = inputContainer.querySelector('.hydrous-file-info');
-            fileInfo.textContent = `Error: El archivo excede el límite de ${config.maxFileSize}MB`;
-            fileInput.value = '';
-            return;
+            alert(`Error: El archivo excede ${config.maxFileSize}MB.`);
+            fileInput.value = ''; return;
           }
-
-          // Guardar archivo seleccionado
           state.selectedFile = file;
-
-          // Mostrar información del archivo
           showFilePreview(inputContainer, file, state);
+          updateSendButton();
         }
       });
     }
 
-    // Evento de envío de mensajes
+    // Función interna para enviar (llamada por Enter o Click)
     const sendMessage = () => {
       const message = textarea.value.trim();
       if ((!message && !state.selectedFile) || state.isTyping) return;
 
-      // Añadir mensaje a la interfaz
-      addUserMessage(messagesContainer, message, state);
+      addUserMessage(messagesContainer, message, state); // Mostrar mensaje usuario
 
-      // Si hay archivo, mostrarlo en el mensaje
       if (state.selectedFile) {
-        addFileToMessage(messagesContainer, state.selectedFile);
+        addFileToMessage(messagesContainer, state.selectedFile); // Mostrar archivo en mensaje
       }
 
-      // Limpiar y resetear textarea
+      const fileToSend = state.selectedFile; // Guardar referencia antes de limpiar
+      if (state.selectedFile) {
+        clearFilePreview(inputContainer, state); // Limpiar UI del archivo
+      }
+
       textarea.value = '';
-      textarea.style.height = '48px'; // Altura base fija
-      sendButton.classList.remove('active');
-      sendButton.disabled = true;
+      textarea.style.height = 'auto'; // Resetear altura
+      textarea.focus();
+      updateSendButton(); // Deshabilitar botón mientras se envía
 
-      // Enviar a la API (con archivo si existe)
-      sendMessageToAPI(messagesContainer, message, config, state);
+      sendMessageToAPI(messagesContainer, message, config, state, fileToSend); // Enviar al backend
 
-      // Limpiar archivo
-      if (state.selectedFile) {
-        clearFilePreview(inputContainer, state);
-      }
-
-      // Registrar evento
-      trackEvent('message_sent', config, { hasFile: !!state.selectedFile });
+      trackEvent('message_sent', config, { hasFile: !!fileToSend });
     };
 
-    // Enviar con botón
+    // Botón de envío click
     sendButton.addEventListener('click', sendMessage);
   }
 
   // Iniciar conversación
   async function startConversation(messagesContainer, config, state) {
     try {
-      // Limpiar contenedor de mensajes (por si hay mensajes de error)
-      messagesContainer.innerHTML = '';
-
-      // Mostrar mensaje de bienvenida directamente desde el frontend
-      const welcomeMessage = config.welcomeMessage || "Bienvenido a HydrousAI. ¿En qué puedo ayudarte?";
-      addBotMessage(messagesContainer, welcomeMessage, state);
-
-      // No conectamos con el backend hasta que el usuario envie su primer mensaje
-      state.conversationStarted = false;
-      state.conversationId = null;
-
-      //Hacer scroll al mensaje
-      scrollToBottom(messagesContainer);
+      messagesContainer.innerHTML = ''; // Limpiar
+      state.isTyping = true; // Mostrar typing inicial
+      showTypingIndicator(messagesContainer);
 
 
-      // Intentar recuperar de cache primero
-      const cachedConversation = getFromCache('last_conversation');
-      if (cachedConversation && cachedConversation.id) {
-        state.conversationId = cachedConversation.id;
-
-        // Mostrar mensajes de cache mientras se valida
-        if (cachedConversation.messages && cachedConversation.messages.length > 0) {
-          cachedConversation.messages.forEach(msg => {
-            if (msg.role === 'assistant') {
-              addBotMessage(messagesContainer, msg.content, state, false);
-            } else if (msg.role === 'user') {
-              addUserMessage(messagesContainer, msg.content, state, false);
-            }
-          });
-        }
-
-        // Verificar si la conversación sigue activa en el servidor
-        try {
-          const response = await fetch(`${config.apiUrl}/chat/${state.conversationId}`);
-          if (!response.ok) {
-            throw new Error('Conversación no encontrada');
-          }
-        } catch (e) {
-          // Si hay error, iniciar nueva conversación
-          state.conversationId = null;
-          // Limpiar mensajes mostrados de cache
-          messagesContainer.innerHTML = '';
-        }
+      // Llamar a /start SOLO para obtener ID y saludo inicial del backend
+      const response = await fetch(`${config.apiUrl}/chat/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        const errTxt = await response.text();
+        throw new Error(`Error ${response.status}: ${errTxt}`);
       }
+      const data = await response.json();
 
-      // Si no hay conversación en cache o no es válida, crear nueva
-      if (!state.conversationId) {
-        state.isTyping = true;
+      state.conversationId = data.id;
+      localStorage.setItem('hydrous_conversation_id', data.id); // Guardar ID
 
-        // Mostrar indicador de escritura
-        showTypingIndicator(messagesContainer);
+      clearTypingIndicator(messagesContainer);
 
-        // Llamar API para iniciar conversación
-        const response = await fetch(`${config.apiUrl}/chat/start`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
+      // Mostrar el primer mensaje que viene del backend (saludo/pregunta inicial)
+      if (data.messages && data.messages.length > 0) {
+        data.messages.forEach(msg => {
+          if (msg.role === 'assistant') {
+            addBotMessage(messagesContainer, msg.content, state);
           }
         });
-
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // Guardar ID de conversación
-        state.conversationId = data.id;
-        localStorage.setItem('hydrous_conversation_id', data.id);
-
-        // Limpiar indicador de escritura
-        clearTypingIndicator(messagesContainer);
-
-        // Mostrar mensajes iniciales
-        const visibleMessages = data.messages
-          .filter(msg => msg.role !== 'system')
-          .forEach(msg => {
-            if (msg.role === 'assistant') {
-              addBotMessage(messagesContainer, msg.content, state);
-            }
-          });
-
-        // Guardar en cache
-        saveToCache('last_conversation', {
-          id: state.conversationId,
-          messages: data.messages
-        });
+      } else {
+        // Fallback si /start no devuelve mensajes (usar welcomeMessage)
+        addBotMessage(messagesContainer, config.welcomeMessage, state);
       }
 
     } catch (err) {
       console.error('Error al iniciar conversación:', err);
-
-      // Mensaje de error
       clearTypingIndicator(messagesContainer);
-      addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al iniciar el chat. Por favor, intenta nuevamente.", state);
-
+      addBotMessage(messagesContainer, `Error al conectar: ${err.message}. Intenta recargar.`, state);
     } finally {
       state.isTyping = false;
+      updateSendButton(); // Actualizar botón
     }
   }
 
@@ -1148,141 +1022,113 @@
   }
 
   // Enviar mensaje a la API
-  async function sendMessageToAPI(messagesContainer, message, config, state) {
+  async function sendMessageToAPI(messagesContainer, message, config, state, fileToUpload) {
     try {
-      // Validar estado de la conexión
-      if (!navigator.onLine) {
-        throw new Error("Sin conexión a internet");
-      }
+      if (!navigator.onLine) throw new Error("Sin conexión a internet");
+      if (!state.conversationId) throw new Error("ID de conversación no establecido"); // Validar ID
 
       state.isTyping = true;
-
-      // Mostrar indicador de escritura
       showTypingIndicator(messagesContainer);
+      updateSendButton(); // Deshabilitar botón
 
-      // Si es el primer mensaje, iniciar la conversación en el backend
-      if (!state.isConversationStarted) {
-        try {
-          // Iniciar conversación en el backend
-          const response = await fetch(`${config.apiUrl}/chat/start`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
+      let response;
 
-          if (!response.ok) {
-            throw new Error(`Error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          state.conversationId = data.id;
-          state.isConversationStarted = true;
-
-          // Guardar en localStorage
-          localStorage.setItem('hydrous_conversation_id', data.id);
-
-        } catch (err) {
-          console.error('Error al iniciar conversación en backend:', err);
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, no puedo conectar con el asistente. Por favor, intenta de nuevo más tarde.", state);
-          state.isTyping = false;
-          return;
-        }
-      }
-
-      // Si no hay ID de conversación, intentar iniciar una (solo como respaldo)
-      if (!state.conversationId) {
-        try {
-          // En lugar de llamar a startConversation, que muestra un mensaje predefinido,
-          // podemos simplemente generar un error para que se maneje abajo
-          throw new Error("No se pudo obtener ID de conversación");
-        } catch (err) {
-          clearTypingIndicator(messagesContainer);
-          addBotMessage(messagesContainer, "Lo siento, ha ocurrido un error al conectar con el asistente. Por favor, recarga la página e intenta de nuevo.", state);
-          state.isTyping = false;
-          return;
-        }
-      }
-
-      // Una vez que tenemos ID de conversación, procesamos el mensaje
-      if (state.selectedFile) {
-        // Con archivo
+      if (fileToUpload) {
+        // --- Envío CON archivo ---
+        console.log("Enviando archivo:", fileToUpload.name);
         const formData = new FormData();
         formData.append('conversation_id', state.conversationId);
         formData.append('message', message || '');
-        formData.append('file', state.selectedFile);
+        formData.append('file', fileToUpload);
 
-        // Enviar mensaje con archivo
-        const response = await fetch(`${config.apiUrl}/documents/upload`, {
+        response = await fetch(`${config.apiUrl}/documents/upload`, { // Asume endpoint de subida
           method: 'POST',
           body: formData
         });
 
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
-
-        // Procesar respuesta
-        const data = await response.json();
-
-        // Limpiar indicador de escritura
-        clearTypingIndicator(messagesContainer);
-
-        // Añadir respuesta del bot
-        addBotMessage(messagesContainer, data.message || "Archivo recibido. Estamos procesando su contenido.", state);
-
-        // Actualizar cache
-        updateCachedMessages(state.conversationId, message, data.message || "Archivo recibido. Estamos procesando su contenido.");
       } else {
-        // Sin archivo
-        const response = await fetch(`${config.apiUrl}/chat/message`, {
+        // --- Envío SIN archivo ---
+        console.log("Enviando mensaje:", message);
+        response = await fetch(`${config.apiUrl}/chat/message`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: state.conversationId,
             message: message
           })
         });
+      }
 
-        if (!response.ok) {
-          throw new Error(`Error: ${response.status}`);
-        }
+      // --- Procesar Respuesta ---
+      if (!response.ok) {
+        let errorDetail = `Error: ${response.status}`;
+        try { const errorData = await response.json(); errorDetail = errorData.detail || errorDetail; } catch (e) { }
+        throw new Error(errorDetail);
+      }
 
-        const data = await response.json();
+      const data = await response.json();
 
-        // Limpiar indicador de escritura
+      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      // <<<<<<<<<<<<<<   INICIO: LÓGICA DE MANEJO DE RESPUESTA   <<<<<<<<<<<<<
+      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+      if (data.action === "trigger_download" && data.download_url) {
+        // Es señal para descargar PDF
+        console.log('Recibida señal para descargar PDF desde:', data.download_url);
+
+        // Mostrar mensaje temporal
+        const downloadInfo = document.createElement('div');
+        downloadInfo.className = 'hydrous-download-info'; // Reutilizar estilo si existe
+        downloadInfo.style.cssText = `position:fixed; bottom:80px; right:20px; background:${config.primaryColor}; color:white; padding:10px 15px; border-radius:8px; font-size:14px; z-index:10001; box-shadow:0 2px 5px rgba(0,0,0,0.2); animation: hydrous-fadeIn 0.3s ease;`; // Estilos inline
+        downloadInfo.textContent = 'Iniciando descarga del PDF...';
+        document.body.appendChild(downloadInfo);
+        setTimeout(() => { if (document.body.contains(downloadInfo)) document.body.removeChild(downloadInfo); }, 4000);
+
+        // Iniciar descarga
+        window.location.href = data.download_url; // Método más simple
+
+        // Limpiar indicador typing, NO mostrar mensaje de bot
         clearTypingIndicator(messagesContainer);
 
-        // Añadir respuesta del bot (con soporte Markdown)
-        addBotMessage(messagesContainer, data.message, state);
-
-        // Actualizar cache
-        updateCachedMessages(state.conversationId, message, data.message);
+      } else if (data.message) {
+        // Mensaje normal del bot
+        console.log('Recibido mensaje normal del bot:', data.message);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(messagesContainer, data.message, state); // Mostrar en chat
+        // updateCachedMessages(...); // Actualizar caché si lo usas
+      } else {
+        // Respuesta inesperada
+        console.warn("Respuesta recibida sin mensaje o acción válida:", data);
+        clearTypingIndicator(messagesContainer);
+        addBotMessage(messagesContainer, "(Respuesta inesperada del asistente)", state);
       }
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      // >>>>>>>>>>>>>>>>>>    FIN: LÓGICA DE MANEJO DE RESPUESTA   >>>>>>>>>>>
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     } catch (err) {
-      console.error('Error al enviar mensaje:', err);
-
-      // Mejorar mensajes de error según el tipo
-      let errorMessage = "Lo siento, ha ocurrido un error al procesar tu mensaje.";
-
-      if (err.message === "Sin conexión a internet") {
-        errorMessage = "No hay conexión a internet. Por favor, verifica tu conexión e intenta nuevamente.";
-      } else if (err.message.includes("404")) {
-        errorMessage = "No se pudo conectar con el servidor. Por favor, intenta más tarde.";
-      } else if (err.message.includes("timeout")) {
-        errorMessage = "La conexión tardó demasiado. Por favor, intenta nuevamente.";
+      console.error('Error en sendMessageToAPI:', err);
+      let errorMessage = "Lo siento, ha ocurrido un error.";
+      if (typeof err.message === 'string') {
+        // ... (manejo de errores como antes) ...
+        if (err.message.includes("Failed to fetch") || err.message.includes("Sin conexión")) { errorMessage = "Error de conexión."; }
+        else if (err.message.includes("404")) { errorMessage = "Servidor no encontrado."; }
+        else if (err.message.includes("timeout") || err.message.includes("timed out")) { errorMessage = "La conexión tardó demasiado."; }
+        else if (err.message.includes("429")) { errorMessage = "Límite excedido. Espera."; }
+        else { errorMessage = `Error: ${err.message.substring(0, 100)}`; }
       }
-
-      // Mensaje de error
       clearTypingIndicator(messagesContainer);
       addBotMessage(messagesContainer, errorMessage, state);
-
     } finally {
-      state.isTyping = false;
+      state.isTyping = false; // Siempre resetear typing
+      // Rehabilitar y actualizar botón/foco SIEMPRE
+      if (uiElements.textarea) uiElements.textarea.disabled = false;
+      updateSendButton(); // Actualizar estado del botón
+      // Poner foco solo si no se seleccionó un archivo (evita abrir teclado en móvil)
+      if (uiElements.textarea && !state.selectedFile) {
+        // Añadir un pequeño delay para asegurar que el re-enable ocurra antes del focus
+        setTimeout(() => uiElements.textarea.focus(), 50);
+      }
     }
   }
 
