@@ -967,8 +967,11 @@
       }
       const data = await response.json();
 
-      state.conversationId = data.id;
-      localStorage.setItem('hydrous_conversation_id', data.id); // Guardar ID
+      if (!data.id) {
+        throw new Error("Respuesta de /start no contiene ID de conversación.");
+      }
+      state.conversationId = data.id; // <--- PUNTO CRÍTICO 5 (Asignación)
+      localStorage.setItem('hydrous_conversation_id', data.id);
 
       clearTypingIndicator(messagesContainer);
 
